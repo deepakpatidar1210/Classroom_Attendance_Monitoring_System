@@ -29,7 +29,20 @@ router.get('/teachers', authMiddleware, async (req, res) => {
   }
 });
 
-// Teachers ki count (admin dashboard ke liye)
+// Departments fetch karo
+router.get('/departments', authMiddleware, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('departments')
+      .select('*');
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Teachers ki count
 router.get('/teachers-count', authMiddleware, async (req, res) => {
   try {
     const { count, error } = await supabase
@@ -42,7 +55,7 @@ router.get('/teachers-count', authMiddleware, async (req, res) => {
   }
 });
 
-// Students ki count (admin dashboard ke liye)
+// Students ki count
 router.get('/students-count', authMiddleware, async (req, res) => {
   try {
     const { count, error } = await supabase

@@ -156,3 +156,33 @@ router.post('/verify-face', async (req, res) => {
 });
 
 module.exports = router;
+
+// CHANGE PASSWORD
+router.post('/change-password', require('../middleware/auth'), async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.user.id;
+
+  try {
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('password_hash')
+      .eq('id', userId)
+      .single();
+
+    if (error || !user) return res.status(400).json({ error: 'User not found' });
+
+    const valid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!valid) return res.status(400).json({ error: 'Current password is incorrect' });
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    const { error: updateErr } = await supabase
+      .from('users')
+      .update({ password_hash: newHash })
+      .eq('id', userId);
+
+    if (updateErr) return res.status(400).json({ error: updateErr.message });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});

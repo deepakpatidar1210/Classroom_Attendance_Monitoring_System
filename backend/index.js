@@ -7,6 +7,7 @@ const sessionRoutes = require('./routes/sessions');
 const attendanceRoutes = require('./routes/attendance');
 const qrRoutes = require('./routes/qr');
 const studentRoutes = require('./routes/students');
+const timetableRoutes = require('./routes/timetable');
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/qr', qrRoutes);
 app.use('/api/students', studentRoutes);
+app.use('/api/timetable', timetableRoutes);
 
 app.get('/', (req, res) => res.json({ message: 'AttendX API running' }));
 

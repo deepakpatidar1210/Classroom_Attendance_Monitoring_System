@@ -9,7 +9,8 @@ router.post('/create', authMiddleware, async (req, res) => {
   const teacher_id = req.user.id;
   try {
     // start_time timestamptz hai — date + time combine karke proper timestamp banao
-    const start_timestamp = new Date(`${date}T${start_time}:00`).toISOString();
+    const timeStr = start_time.length === 5 ? `${start_time}:00` : start_time;
+    const start_timestamp = new Date(`${date}T${timeStr}`).toISOString();
 
     const { data, error } = await supabase
       .from('sessions')

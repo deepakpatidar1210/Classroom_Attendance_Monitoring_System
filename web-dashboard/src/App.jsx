@@ -8,8 +8,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import Sessions from './pages/Sessions';
 import Students from './pages/students';
 import Reports from './pages/reports';
-import Teachers from './pages/Teachers';
-import Rooms from './pages/Rooms';
+import Settings from './pages/Settings';
 
 export default function App() {
   return (
@@ -32,16 +31,13 @@ export default function App() {
           <Route path="/reports" element={
             <ProtectedRoute role="teacher"><Reports /></ProtectedRoute>
           }/>
+          <Route path="/settings" element={
+            <ProtectedRoute role="teacher"><Settings /></ProtectedRoute>
+          }/>
 
-          {/* Admin routes */}
+          {/* Admin */}
           <Route path="/admin" element={
             <ProtectedRoute role="admin"><AdminDashboard /></ProtectedRoute>
-          }/>
-          <Route path="/teachers" element={
-            <ProtectedRoute role="admin"><Teachers /></ProtectedRoute>
-          }/>
-          <Route path="/rooms" element={
-            <ProtectedRoute role="admin"><Rooms /></ProtectedRoute>
           }/>
 
           <Route path="*" element={<Navigate to="/login" replace />} />

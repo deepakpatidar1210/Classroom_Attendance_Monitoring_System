@@ -9,6 +9,7 @@ import FaceScanScreen from './screens/FaceScanScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import MarkAttendanceScreen from './screens/MarkAttendanceScreen';
 import HistoryScreen from './screens/HistoryScreen';
+import SettingsScreen from './screens/SettingsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -16,8 +17,8 @@ function RootNavigator() {
   const { user, loading } = useAuth();
 
   if (loading) return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="large" color="#111" />
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#2C3E6B' }}>
+      <ActivityIndicator size="large" color="#F0C040" />
     </View>
   );
 
@@ -29,6 +30,7 @@ function RootNavigator() {
             <Stack.Screen name="Dashboard" component={DashboardScreen} />
             <Stack.Screen name="MarkAttendance" component={MarkAttendanceScreen} />
             <Stack.Screen name="History" component={HistoryScreen} />
+            <Stack.Screen name="Settings" component={SettingsScreen} />
           </>
         ) : (
           <>
