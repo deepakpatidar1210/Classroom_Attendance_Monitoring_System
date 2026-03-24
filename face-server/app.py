@@ -19,12 +19,12 @@ def get_descriptor():
         data = request.json
         image_base64 = data['image']
         
-        # Base64 decode karo
+        # Base64 decode
         image_data = base64.b64decode(image_base64)
         image = Image.open(io.BytesIO(image_data))
         image_np = np.array(image)
         
-        # Face descriptor nikalo
+        # extract Face descriptor
         encodings = face_recognition.face_encodings(image_np)
         
         if len(encodings) == 0:
@@ -43,12 +43,12 @@ def verify_face():
         live_image_base64 = data['liveImage']
         stored_descriptors = data['storedDescriptors']
         
-        # Live image decode karo
+        # Live image decode
         image_data = base64.b64decode(live_image_base64)
         image = Image.open(io.BytesIO(image_data))
         image_np = np.array(image)
         
-        # Live face descriptor nikalo
+        # Live face descriptor extract
         live_encodings = face_recognition.face_encodings(image_np)
         
         if len(live_encodings) == 0:
@@ -56,7 +56,7 @@ def verify_face():
         
         live_encoding = live_encodings[0]
         
-        # Stored descriptors se compare karo
+        #  compare with Stored descriptors
         stored_encodings = [np.array(d) for d in stored_descriptors]
         
         results = face_recognition.compare_faces(

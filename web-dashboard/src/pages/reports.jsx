@@ -83,7 +83,7 @@ export default function Reports() {
 
     studentRows.sort((a, b) => a.enrollment.localeCompare(b.enrollment));
 
-    // Excel data prepare karo
+    // Excel data prepare 
     const data = studentRows.map((st, idx) => {
       const pct = st.total > 0 ? Math.round((st.present / st.total) * 100) : 0;
       return {
@@ -95,10 +95,10 @@ export default function Reports() {
       };
     });
 
-    // Worksheet banao
+    // Worksheet creation
     const ws = XLSX.utils.json_to_sheet(data);
 
-    // Column widths set karo
+    // Column widths set 
     ws['!cols'] = [
       { wch: 8 },   // Sr. No.
       { wch: 18 },  // Enrollment No.

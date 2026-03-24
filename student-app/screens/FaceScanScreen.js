@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Alert, StatusBar, SafeAreaView, Animated, Easing
+  StatusBar, SafeAreaView, Animated, Easing
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import api from '../api/axios';
@@ -15,18 +15,19 @@ const COLORS = {
   green: '#16A34A', greenBg: '#DCFCE7', red: '#DC2626',
 };
 
-const TOTAL_CAPTURES = 10; // Zyada captures = better descriptors
+const TOTAL_CAPTURES = 10;
 
 export default function FaceScanScreen({ route, navigation }) {
   const { userId, token } = route.params;
   const [permission, requestPermission] = useCameraPermissions();
-  const [phase, setPhase] = useState('scanning'); // scanning | saving | done | error
+  const [phase, setPhase] = useState('scanning');
   const [captureCount, setCaptureCount] = useState(0);
   const [message, setMessage] = useState('Position your face in the circle');
   const cameraRef = useRef(null);
   const capturedImages = useRef([]);
   const isCapturing = useRef(false);
   const intervalRef = useRef(null);
+  const lastFrameRef = useRef(null); // preview ke liye last frame
 
   const progress = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -35,7 +36,6 @@ export default function FaceScanScreen({ route, navigation }) {
     if (!permission?.granted) requestPermission();
   }, [permission]);
 
-  // Pulse animation
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
@@ -47,7 +47,6 @@ export default function FaceScanScreen({ route, navigation }) {
     return () => pulse.stop();
   }, []);
 
-  // Auto-capture every 700ms
   useEffect(() => {
     if (phase !== 'scanning' || !permission?.granted) return;
 
@@ -62,22 +61,17 @@ export default function FaceScanScreen({ route, navigation }) {
       isCapturing.current = true;
       try {
         if (!cameraRef.current) return;
-
-        // Quality 0.7 rakho taaki face detail achhi mile
         const photo = await cameraRef.current.takePictureAsync({
-          base64: true,
-          quality: 0.7,
-          skipProcessing: false, // false = proper orientation fix
+          base64: true, quality: 0.7, skipProcessing: false,
         });
-
         capturedImages.current.push(photo.base64);
+        lastFrameRef.current = photo.base64; // last frame save karo preview ke liye
         const newCount = capturedImages.current.length;
         setCaptureCount(newCount);
 
         Animated.timing(progress, {
           toValue: newCount / TOTAL_CAPTURES,
-          duration: 300,
-          useNativeDriver: false,
+          duration: 300, useNativeDriver: false,
         }).start();
 
         if (newCount === 1) setMessage('Hold still...');
@@ -85,7 +79,6 @@ export default function FaceScanScreen({ route, navigation }) {
         else if (newCount === 5) setMessage('Slightly tilt right...');
         else if (newCount === 7) setMessage('Look slightly up...');
         else if (newCount === 9) setMessage('Almost done...');
-
       } catch (e) {
         console.log('capture error', e);
       } finally {
@@ -102,62 +95,51 @@ export default function FaceScanScreen({ route, navigation }) {
     setMessage('Processing face data...');
 
     try {
-      // Token pehle save karo
       await AsyncStorage.setItem('token', token);
 
       const descriptors = [];
-      const errors = [];
-
       for (let i = 0; i < capturedImages.current.length; i++) {
-        const imageBase64 = capturedImages.current[i];
         try {
           const res = await axios.post(`${FACE_SERVER_URL}/get-descriptor`, {
-            image: imageBase64,
-          }, { timeout: 15000 }); // 15s timeout
-
-          if (res.data.descriptor) {
-            descriptors.push(res.data.descriptor);
-            console.log(`✓ Descriptor ${descriptors.length} extracted`);
-          }
+            image: capturedImages.current[i],
+          }, { timeout: 15000 });
+          if (res.data.descriptor) descriptors.push(res.data.descriptor);
         } catch (e) {
-          const errMsg = e.response?.data?.error || e.message;
-          errors.push(`Frame ${i + 1}: ${errMsg}`);
-          console.log(`✗ Frame ${i + 1} failed:`, errMsg);
+          console.log(`Frame ${i + 1} failed:`, e.message);
         }
       }
 
-      console.log(`Total descriptors: ${descriptors.length}/${capturedImages.current.length}`);
-
-      // Minimum 2 descriptors chahiye (pehle 3 tha, ab 2 kar diya)
       if (descriptors.length < 2) {
         setPhase('error');
-        setMessage(`Face not detected clearly. Got ${descriptors.length}/${capturedImages.current.length} frames. Try better lighting.`);
-        console.log('Errors:', errors);
+        setMessage(`Face not detected clearly. Got ${descriptors.length}/${capturedImages.current.length} frames.`);
         return;
       }
 
-      // Descriptors backend mein save karo
+      // Descriptors + preview image save karo
       await api.post('/auth/save-face', {
         userId,
         faceImages: descriptors,
+        facePreview: lastFrameRef.current, // admin ko dikhane ke liye
       });
 
       setPhase('done');
-      setMessage(`Face registered! (${descriptors.length} samples saved)`);
+      setMessage('Face registered successfully!');
 
+      // 2 seconds baad pending screen par jao
       setTimeout(() => {
-        navigation.navigate('Login');
+        navigation.replace('PendingApproval');
       }, 2000);
 
     } catch (err) {
-      console.log('saveAllFaces error:', err.message);
       setPhase('error');
-      setMessage('Registration failed. Check connection and try again.');
+      setMessage('Registration failed. Check connection.');
+      console.log('saveAllFaces error:', err.message);
     }
   };
 
   const retry = () => {
     capturedImages.current = [];
+    lastFrameRef.current = null;
     setCaptureCount(0);
     progress.setValue(0);
     setPhase('scanning');
@@ -176,18 +158,15 @@ export default function FaceScanScreen({ route, navigation }) {
   }
 
   const progressWidth = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
+    inputRange: [0, 1], outputRange: ['0%', '100%'],
   });
 
   const ringColor = phase === 'done' ? COLORS.green
-    : phase === 'error' ? COLORS.red
-    : COLORS.gold;
+    : phase === 'error' ? COLORS.red : COLORS.gold;
 
   return (
     <SafeAreaView style={s.wrap}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.navy} />
-
       <View style={s.header}>
         <Text style={s.title}>Face Registration</Text>
         <Text style={s.sub}>Step 2 of 2</Text>
@@ -196,11 +175,7 @@ export default function FaceScanScreen({ route, navigation }) {
       <View style={s.cameraSection}>
         <Animated.View style={[s.ringOuter, { borderColor: ringColor, transform: [{ scale: pulseAnim }] }]}>
           <View style={s.cameraWrap}>
-            <CameraView
-              ref={cameraRef}
-              style={s.camera}
-              facing="front"
-            />
+            <CameraView ref={cameraRef} style={s.camera} facing="front" />
             {phase === 'done' && (
               <View style={[s.overlay, { backgroundColor: 'rgba(16,185,129,0.85)' }]}>
                 <Text style={{ fontSize: 56, color: '#fff' }}>✓</Text>
@@ -235,7 +210,7 @@ export default function FaceScanScreen({ route, navigation }) {
       {phase === 'scanning' && (
         <View style={s.tipsCard}>
           <Text style={s.tipsTitle}>Tips for better recognition</Text>
-          <Text style={s.tip}>• Bright light on your face (not behind you)</Text>
+          <Text style={s.tip}>• Bright light on your face</Text>
           <Text style={s.tip}>• Remove glasses if possible</Text>
           <Text style={s.tip}>• Look directly at camera first</Text>
           <Text style={s.tip}>• Slightly move head left, right & up</Text>
@@ -258,38 +233,21 @@ const s = StyleSheet.create({
   sub: { fontSize: 13, color: 'rgba(255,255,255,0.5)' },
   cameraSection: { alignItems: 'center', marginBottom: 28 },
   ringOuter: {
-    width: 260, height: 260, borderRadius: 130,
-    borderWidth: 4,
-    padding: 8,
-    shadowColor: COLORS.gold,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6, shadowRadius: 20,
-    elevation: 10,
+    width: 260, height: 260, borderRadius: 130, borderWidth: 4,
+    padding: 8, shadowColor: COLORS.gold, shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6, shadowRadius: 20, elevation: 10,
   },
   cameraWrap: { flex: 1, borderRadius: 130, overflow: 'hidden', position: 'relative' },
   camera: { flex: 1 },
-  overlay: {
-    position: 'absolute', inset: 0,
-    alignItems: 'center', justifyContent: 'center',
-    borderRadius: 130,
-  },
-  progressSection: {
-    paddingHorizontal: 8, marginBottom: 16,
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-  },
-  progressBg: {
-    flex: 1, height: 8, backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 4, overflow: 'hidden',
-  },
+  overlay: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', borderRadius: 130 },
+  progressSection: { paddingHorizontal: 8, marginBottom: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  progressBg: { flex: 1, height: 8, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: 8, borderRadius: 4 },
   progressText: { fontSize: 12, color: 'rgba(255,255,255,0.7)', width: 56, textAlign: 'right' },
   message: { textAlign: 'center', fontSize: 15, fontWeight: '500', color: '#fff', marginBottom: 20 },
   tipsCard: { backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 14, padding: 16 },
   tipsTitle: { fontSize: 12, fontWeight: '600', color: COLORS.gold, marginBottom: 10 },
   tip: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 5 },
-  goldBtn: {
-    backgroundColor: COLORS.gold, borderRadius: 12,
-    paddingVertical: 16, alignItems: 'center', marginTop: 8,
-  },
+  goldBtn: { backgroundColor: COLORS.gold, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
   goldBtnText: { color: COLORS.navyDark, fontSize: 16, fontWeight: '700' },
 });

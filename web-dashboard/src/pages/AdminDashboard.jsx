@@ -18,19 +18,18 @@ export default function AdminDashboard() {
   const [departments, setDepartments] = useState([]);
 
   const [teachers, setTeachers] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
   const [facDept, setFacDept] = useState('ALL');
   const [showAddFac, setShowAddFac] = useState(false);
-  const [facForm, setFacForm] = useState({ name: '', email: '', mobile: '', department_id: '' });
+  const [facForm, setFacForm] = useState({ name: '', email: '', mobile: '', department_id: '', designation: 'Assistant Professor' });
   const [facErrors, setFacErrors] = useState({});
   const [genCreds, setGenCreds] = useState(null);
   const [credStep, setCredStep] = useState(1);
 
   const [students, setStudents] = useState([]);
-  const [stuLevel, setStuLevel] = useState('dept');
-  const [stuDept, setStuDept] = useState('');
-  const [stuDeptName, setStuDeptName] = useState('');
-  const [stuSection, setStuSection] = useState('');
   const [stuAttendance, setStuAttendance] = useState({});
+  const [stuFilter, setStudentFilter] = useState({ dept: '', year: '', sem: '', section: '' });
 
   const [rooms, setRooms] = useState([]);
   const [showAddRoom, setShowAddRoom] = useState(false);
@@ -44,6 +43,7 @@ export default function AdminDashboard() {
     fetchTeachers();
     fetchStudents();
     fetchRooms();
+    fetchPendingRequests();
   }, []);
 
   useEffect(() => {
@@ -60,7 +60,7 @@ export default function AdminDashboard() {
       const res = await api.get('/students/departments');
       setDepartments(res.data);
     } catch {
-      // Fallback — agar route nahi hai to hardcode
+      // Fallback 
       setDepartments([
         { id: 'fd1e3235-48d4-4b08-bfd4-4af05a53ff91', name: 'Computer Science (CSE)' },
       ]);
@@ -78,6 +78,19 @@ export default function AdminDashboard() {
     try {
       const res = await api.get('/students/all');
       setStudents(res.data);
+      // Attendance fetch
+      if (res.data.length > 0) {
+        const map = {};
+        await Promise.all(res.data.map(async (st) => {
+          try {
+            const r = await api.get('/attendance/student/' + st.id);
+            const total = r.data.length;
+            const present = r.data.filter(a => a.status === 'present').length;
+            map[st.id] = total > 0 ? Math.round((present / total) * 100) : null;
+          } catch { map[st.id] = null; }
+        }));
+        setStuAttendance(map);
+      }
     } catch { console.error('students fetch failed'); }
   };
 
@@ -92,7 +105,7 @@ export default function AdminDashboard() {
     const map = {};
     await Promise.all(studentList.map(async (st) => {
       try {
-        const res = await api.get(`/attendance/student/${st.id}`);
+        const res = await api.get('/attendance/student/' + st.id);
         const total = res.data.length;
         const present = res.data.filter(r => r.status === 'present').length;
         map[st.id] = total > 0 ? Math.round((present / total) * 100) : null;
@@ -139,22 +152,31 @@ export default function AdminDashboard() {
 
   const handleAddFaculty = async () => {
     try {
-      await api.post('/auth/register', {
+      // Unique employee_id — timestamp based
+      const empId = `FAC-${Date.now().toString().slice(-6)}`;
+      
+      const res = await api.post('/auth/register', {
         name: facForm.name,
         email: facForm.email,
         password: genCreds.password,
         role: 'teacher',
-        employee_id: `FAC${String(teachers.length + 1).padStart(3, '0')}`,
+        employee_id: empId,
         department_id: facForm.department_id,
+        designation: facForm.designation || 'Assistant Professor',
       });
-      toast.success('Faculty added successfully!');
-      setShowAddFac(false);
-      setFacForm({ name: '', email: '', mobile: '', department_id: '' });
-      setGenCreds(null);
-      setCredStep(1);
-      fetchTeachers();
+
+      if (res.data) {
+        toast.success(`${facForm.name} added successfully!`);
+        setShowAddFac(false);
+        setFacForm({ name: '', email: '', mobile: '', department_id: '', designation: 'Assistant Professor' });
+        setGenCreds(null);
+        setCredStep(1);
+        fetchTeachers();
+      }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Could not add faculty');
+      const errMsg = err.response?.data?.error || 'Could not add faculty';
+      toast.error(errMsg);
+      console.error('Add faculty error:', errMsg);
     }
   };
 
@@ -162,14 +184,33 @@ export default function AdminDashboard() {
   const validateRoomForm = () => {
     const errs = {};
     if (!roomForm.name.trim()) errs.name = 'Room name required';
-    if (!roomForm.latitude) errs.latitude = 'Latitude required';
-    else if (isNaN(roomForm.latitude)) errs.latitude = 'Must be a number';
-    if (!roomForm.longitude) errs.longitude = 'Longitude required';
-    else if (isNaN(roomForm.longitude)) errs.longitude = 'Must be a number';
-    if (!roomForm.radius_meters) errs.radius_meters = 'Radius required';
-    else if (isNaN(roomForm.radius_meters) || Number(roomForm.radius_meters) < 5) errs.radius_meters = 'Min 5 meters';
+    
+    if (!roomForm.latitude) errs.latitude = 'Latitude required (eg. 22.7196)';
+    else if (isNaN(roomForm.latitude)) errs.latitude = 'Invalid — only numbers allowed (eg. 22.7196)';
+    else if (parseFloat(roomForm.latitude) < -90 || parseFloat(roomForm.latitude) > 90) errs.latitude = 'Latitude must be between -90 and 90';
+    
+    if (!roomForm.longitude) errs.longitude = 'Longitude required (eg. 75.8577)';
+    else if (isNaN(roomForm.longitude)) errs.longitude = 'Invalid — only numbers allowed (eg. 75.8577)';
+    else if (parseFloat(roomForm.longitude) < -180 || parseFloat(roomForm.longitude) > 180) errs.longitude = 'Longitude must be between -180 and 180';
+    
+    if (!roomForm.radius_meters) errs.radius_meters = 'GPS radius required (eg. 30)';
+    else if (isNaN(roomForm.radius_meters)) errs.radius_meters = 'Invalid — only numbers allowed (eg. 30)';
+    else if (parseInt(roomForm.radius_meters) < 5) errs.radius_meters = 'Minimum radius is 5 meters';
+    else if (parseInt(roomForm.radius_meters) > 500) errs.radius_meters = 'Maximum radius is 500 meters';
+    
     setRoomErrors(errs);
     return Object.keys(errs).length === 0;
+  };
+  
+  const handleRemoveRoom = async (roomId, name) => {
+    if (!window.confirm('Remove room "' + name + '"? This cannot be undone.')) return;
+    try {
+      await api.delete('/sessions/rooms/' + roomId);
+      toast.success(name + ' removed successfully');
+      fetchRooms();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not remove room');
+    }
   };
 
   const handleAddRoom = async () => {
@@ -191,6 +232,93 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchPendingRequests = async () => {
+    setRequestsLoading(true);
+    try {
+      const res = await api.get('/students/pending-requests');
+      setPendingRequests(res.data);
+    } catch { console.error('pending requests fetch failed'); }
+    finally { setRequestsLoading(false); }
+  };
+
+  const handleApprove = async (studentId, name) => {
+    if (!window.confirm(`Approve ${name}?`)) return;
+    try {
+      await api.patch(`/students/approve/${studentId}`);
+      toast.success(`${name} approved successfully!`);
+      fetchPendingRequests();
+      fetchStudents();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not approve');
+    }
+  };
+
+  const handleReject = async (studentId, name) => {
+    if (!window.confirm(`Reject ${name}? This will deny their access.`)) return;
+    try {
+      await api.patch(`/students/reject/${studentId}`);
+      toast.success(`${name} rejected.`);
+      fetchPendingRequests();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not reject');
+    }
+  };
+
+  // Students filter logic
+  const filteredStudents = students.filter(st => {
+    if (stuFilter.dept && st.department_id !== stuFilter.dept) return false;
+    if (stuFilter.sem && st.semester !== parseInt(stuFilter.sem)) return false;
+    if (stuFilter.section) {
+      const lastChar = (st.enrollment_no || '').slice(-1).toUpperCase();
+      if (lastChar !== stuFilter.section) return false;
+    }
+    return true;
+  });
+
+  const getStuStatus = (pct) => {
+    if (pct === null || pct === undefined) return { label: '—', color: '#8A8A8A', bg: 'transparent' };
+    if (pct >= 75) return { label: 'Safe', color: '#16A34A', bg: '#DCFCE7' };
+    if (pct >= 65) return { label: 'Warning', color: '#D97706', bg: '#FEF3C7' };
+    return { label: 'Critical', color: '#DC2626', bg: '#FEF2F2' };
+  };
+
+  const exportStudentsCSV = () => {
+    const csv = [
+      ['Sr.', 'Enrollment No.', 'Name', 'Department', 'Semester', 'Attendance %', 'Status'].join(','),
+      ...filteredStudents.map((st, i) => {
+        const dept = departments.find(d => d.id === st.department_id);
+        const pct = stuAttendance[st.id];
+        return [
+          i + 1,
+          st.enrollment_no,
+          st.users?.name || '',
+          dept?.code || '',
+          'Sem ' + st.semester,
+          pct !== null && pct !== undefined ? pct + '%' : '—',
+          st.status || 'pending',
+        ].join(',');
+      })
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'students_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleRemoveFaculty = async (teacherId, name) => {
+    if (!window.confirm(`Remove ${name || 'this faculty'}? This action cannot be undone.`)) return;
+    try {
+      await api.delete(`/students/teacher/${teacherId}`);
+      toast.success(`${name || 'Faculty'} removed successfully`);
+      fetchTeachers();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Could not remove faculty');
+    }
+  };
+
   const getStatus = (pct) => {
     if (pct === null || pct === undefined) return { label: '—', color: '#8A8A8A', bg: 'transparent' };
     if (pct >= 75) return { label: 'Safe', color: '#16A34A', bg: '#DCFCE7' };
@@ -203,6 +331,7 @@ export default function AdminDashboard() {
     { key: 'faculties', label: 'Faculties', icon: '👨‍🏫' },
     { key: 'students', label: 'Students', icon: '👥' },
     { key: 'rooms', label: 'Rooms', icon: '🚪' },
+    { key: 'requests', label: 'Requests', icon: '📋' },
     { key: 'timetable', label: 'Timetable', icon: '📅' },
   ];
 
@@ -237,7 +366,13 @@ export default function AdminDashboard() {
               <button key={tab.key} className="nav-btn"
                 onClick={() => setActiveTab(tab.key)}
                 style={{ ...s.navItem, ...(activeTab === tab.key ? s.navActive : {}) }}>
-                <span style={s.navIcon}>{tab.icon}</span>{tab.label}
+                <span style={s.navIcon}>{tab.icon}</span>
+                {tab.label}
+                {tab.key === 'requests' && pendingRequests.length > 0 && (
+                  <span style={{ marginLeft: 'auto', background: '#DC2626', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 10 }}>
+                    {pendingRequests.length}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -331,45 +466,58 @@ export default function AdminDashboard() {
             {activeTab === 'faculties' && (
               <div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
-                  {['ALL', ...departments.map(d => d.name)].map((d, i) => (
-                    <button key={i} className="dept-tab-btn"
-                      onClick={() => setFacDept(d)}
-                      style={{ ...s.deptTab, ...(facDept === d ? s.deptTabActive : {}) }}>
-                      {d === 'ALL' ? 'All' : d}
+                  <button className="dept-tab-btn" onClick={() => setFacDept('ALL')}
+                    style={{ ...s.deptTab, ...(facDept === 'ALL' ? s.deptTabActive : {}) }}>All</button>
+                  {departments.map(d => (
+                    <button key={d.id} className="dept-tab-btn" onClick={() => setFacDept(d.id)}
+                      style={{ ...s.deptTab, ...(facDept === d.id ? s.deptTabActive : {}) }}>
+                      {d.code}
                     </button>
                   ))}
                 </div>
-
                 <div style={s.card}>
                   <div style={s.sectionHeader}>
-                    <div style={{ ...s.sectionTitle, marginBottom: 0 }}>Faculty List</div>
+                    <div style={{ ...s.sectionTitle, marginBottom: 0 }}>
+                      Faculty List
+                      <span style={{ fontSize: 12, color: '#8A8A8A', fontWeight: 400, marginLeft: 8 }}>
+                        ({(facDept === 'ALL' ? teachers : teachers.filter(t => t.department_id === facDept)).length} faculty)
+                      </span>
+                    </div>
                     <button className="btn-pri" style={s.btnPrimary}
-                      onClick={() => { setShowAddFac(true); setCredStep(1); setGenCreds(null); setFacForm({ name: '', email: '', mobile: '', department_id: '' }); setFacErrors({}); }}>
+                      onClick={() => { setShowAddFac(true); setCredStep(1); setGenCreds(null); setFacForm({ name: '', email: '', mobile: '', department_id: '', designation: 'Assistant Professor' }); setFacErrors({}); }}>
                       + Add Faculty
                     </button>
                   </div>
                   <table style={s.table}>
                     <thead>
                       <tr style={{ background: '#F4F6F9' }}>
-                        {['Employee ID', 'Name', 'Email', 'Action'].map(h => <th key={h} style={s.th}>{h}</th>)}
+                        {['Employee ID', 'Name', 'Designation', 'Department', 'Email', 'Action'].map(h => <th key={h} style={s.th}>{h}</th>)}
                       </tr>
                     </thead>
                     <tbody>
-                      {teachers.map(t => (
+                      {(facDept === 'ALL' ? teachers : teachers.filter(t => t.department_id === facDept)).map(t => (
                         <tr key={t.id} className="cdgi-tr">
                           <td style={{ ...s.td, fontFamily: 'monospace', fontSize: 12 }}>{t.employee_id || '—'}</td>
                           <td style={{ ...s.td, fontWeight: 500 }}>{t.users?.name || '—'}</td>
+                          <td style={s.td}>
+                            <span style={{ ...s.badge, background: '#EEF2FF', color: '#2C3E6B', fontSize: 11 }}>
+                              {t.designation || 'Assistant Professor'}
+                            </span>
+                          </td>
+                          <td style={s.td}>
+                            <span style={{ ...s.badge, background: '#F0FDF4', color: '#16A34A', fontSize: 11 }}>
+                              {departments.find(d => d.id === t.department_id)?.code || '—'}
+                            </span>
+                          </td>
                           <td style={s.td}>{t.users?.email || '—'}</td>
                           <td style={s.td}>
                             <button className="btn-dng" style={s.btnDanger}
-                              onClick={() => toast.error('Remove feature coming soon')}>
-                              Remove
-                            </button>
+                              onClick={() => handleRemoveFaculty(t.id, t.users?.name)}>Remove</button>
                           </td>
                         </tr>
                       ))}
-                      {teachers.length === 0 && (
-                        <tr><td colSpan={4} style={{ textAlign: 'center', padding: 24, color: '#8A8A8A', fontSize: 13 }}>No faculties found</td></tr>
+                      {(facDept === 'ALL' ? teachers : teachers.filter(t => t.department_id === facDept)).length === 0 && (
+                        <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: '#8A8A8A', fontSize: 13 }}>No faculties found</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -380,114 +528,155 @@ export default function AdminDashboard() {
             {/* ===== STUDENTS ===== */}
             {activeTab === 'students' && (
               <div>
-                {stuLevel !== 'dept' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18, fontSize: 13, color: '#8A8A8A' }}>
-                    <span style={{ color: '#2C3E6B', fontWeight: 500, cursor: 'pointer' }}
-                      onClick={() => { setStuLevel('dept'); setStuDept(''); setStuSection(''); }}>
-                      Departments
-                    </span>
-                    {stuDept && <>
-                      <span>›</span>
-                      <span style={{ color: stuLevel === 'list' ? '#2C3E6B' : '#1A1A1A', fontWeight: 500, cursor: stuLevel === 'list' ? 'pointer' : 'default' }}
-                        onClick={() => stuLevel === 'list' && setStuLevel('section')}>
-                        {stuDeptName}
-                      </span>
-                    </>}
-                    {stuSection && <><span>›</span><span style={{ color: '#1A1A1A' }}>{stuSection}</span></>}
-                  </div>
-                )}
+                {/* Filter Row */}
+                <div style={{ background: '#fff', border: '1px solid #D0D5DF', borderRadius: 6, padding: 16, marginBottom: 16 }}>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
 
-                {/* Level 1: Departments */}
-                {stuLevel === 'dept' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-                    {[
-                      { key: 'CS', name: 'Computer Science', icon: '💻' },
-                      { key: 'IT', name: 'Information Technology', icon: '🖧' },
-                      { key: 'EC', name: 'Electronics', icon: '⚡' },
-                      { key: 'ME', name: 'Mechanical', icon: '⚙️' },
-                    ].map(d => {
-                      const count = students.filter(s => (s.enrollment_no || '').toUpperCase().includes(d.key)).length;
-                      return (
-                        <div key={d.key} className="dept-card" style={s.deptCard}
-                          onClick={() => { setStuDept(d.key); setStuDeptName(d.name); setStuLevel('section'); }}>
-                          <div style={{ fontSize: 28, marginBottom: 10 }}>{d.icon}</div>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1A1A', marginBottom: 4 }}>{d.name}</div>
-                          <div style={{ fontSize: 12, color: '#8A8A8A' }}>{count} students</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Level 2: Sections */}
-                {stuLevel === 'section' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
-                    {(SECTIONS_MAP[stuDept] || []).map(sec => {
-                      const semNum = ['I','II','III','IV','V','VI','VII','VIII'].indexOf(sec.split(' ')[1]) + 1;
-                      const secStuds = students.filter(st =>
-                        (st.enrollment_no || '').toUpperCase().includes(stuDept) &&
-                        st.semester === semNum
-                      );
-                      return (
-                        <div key={sec} className="sec-card" style={s.secCard}
-                          onClick={() => {
-                            setStuSection(sec);
-                            setStuLevel('list');
-                            fetchStuAttendance(secStuds);
-                          }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: '#2C3E6B', marginBottom: 4 }}>{sec}</div>
-                          <div style={{ fontSize: 12, color: '#8A8A8A' }}>{secStuds.length} students</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Level 3: Students list */}
-                {stuLevel === 'list' && (() => {
-                  const semNum = ['I','II','III','IV','V','VI','VII','VIII'].indexOf(stuSection.split(' ')[1]) + 1;
-                  const secStuds = students.filter(st =>
-                    (st.enrollment_no || '').toUpperCase().includes(stuDept) &&
-                    st.semester === semNum
-                  );
-                  return (
-                    <div style={s.card}>
-                      <div style={s.sectionHeader}>
-                        <div style={{ ...s.sectionTitle, marginBottom: 0 }}>{stuSection} — Students ({secStuds.length})</div>
-                        <button className="btn-exp" style={s.btnExport}>⬇ Export Excel</button>
-                      </div>
-                      <table style={s.table}>
-                        <thead>
-                          <tr style={{ background: '#F4F6F9' }}>
-                            {['Enrollment No.', 'Name', 'Semester', 'Attendance %', 'Status'].map(h => <th key={h} style={s.th}>{h}</th>)}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {secStuds.map(st => {
-                            const pct = stuAttendance[st.id];
-                            const status = getStatus(pct);
-                            return (
-                              <tr key={st.id} className="cdgi-tr">
-                                <td style={{ ...s.td, fontFamily: 'monospace', fontSize: 12 }}>{st.enrollment_no}</td>
-                                <td style={{ ...s.td, fontWeight: 500 }}>{st.users?.name || '—'}</td>
-                                <td style={s.td}>Sem {st.semester}</td>
-                                <td style={s.td}>
-                                  {pct !== null && pct !== undefined ? (
-                                    <span style={{ ...s.badge, background: status.bg, color: status.color }}>{pct}%</span>
-                                  ) : <span style={{ color: '#8A8A8A', fontSize: 12 }}>—</span>}
-                                </td>
-                                <td style={{ ...s.td, color: status.color, fontWeight: pct !== null ? 500 : 400 }}>{status.label}</td>
-                              </tr>
-                            );
-                          })}
-                          {secStuds.length === 0 && (
-                            <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24, color: '#8A8A8A', fontSize: 13 }}>No students in this section</td></tr>
-                          )}
-                        </tbody>
-                      </table>
+                    {/* Department */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
+                      <label style={s.formLabel}>Department</label>
+                      <select className="cdgi-select" style={s.formInput}
+                        value={stuFilter.dept}
+                        onChange={e => setStudentFilter({ dept: e.target.value, year: '', sem: '', section: '' })}>
+                        <option value="">All Departments</option>
+                        {departments.map(d => (
+                          <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                        ))}
+                      </select>
                     </div>
-                  );
-                })()}
+
+                    {/* Year */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 120 }}>
+                      <label style={s.formLabel}>Year</label>
+                      <select className="cdgi-select" style={s.formInput}
+                        value={stuFilter.year}
+                        onChange={e => setStudentFilter(prev => ({ ...prev, year: e.target.value, sem: '', section: '' }))}
+                        disabled={!stuFilter.dept}>
+                        <option value="">All Years</option>
+                        <option value="1">1st Year</option>
+                        <option value="2">2nd Year</option>
+                        <option value="3">3rd Year</option>
+                        <option value="4">4th Year</option>
+                      </select>
+                    </div>
+
+                    {/* Semester */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
+                      <label style={s.formLabel}>Semester</label>
+                      <select className="cdgi-select" style={s.formInput}
+                        value={stuFilter.sem}
+                        onChange={e => setStudentFilter(prev => ({ ...prev, sem: e.target.value, section: '' }))}
+                        disabled={!stuFilter.year}>
+                        <option value="">All Semesters</option>
+                        {stuFilter.year === '1' && <>
+                          <option value="1">Semester 1</option>
+                          <option value="2">Semester 2</option>
+                        </>}
+                        {stuFilter.year === '2' && <>
+                          <option value="3">Semester 3</option>
+                          <option value="4">Semester 4</option>
+                        </>}
+                        {stuFilter.year === '3' && <>
+                          <option value="5">Semester 5</option>
+                          <option value="6">Semester 6</option>
+                        </>}
+                        {stuFilter.year === '4' && <>
+                          <option value="7">Semester 7</option>
+                          <option value="8">Semester 8</option>
+                        </>}
+                      </select>
+                    </div>
+
+                    {/* Section */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
+                      <label style={s.formLabel}>Section</label>
+                      <select className="cdgi-select" style={s.formInput}
+                        value={stuFilter.section}
+                        onChange={e => setStudentFilter(prev => ({ ...prev, section: e.target.value }))}
+                        disabled={!stuFilter.sem}>
+                        <option value="">All Sections</option>
+                        <option value="A">Section A</option>
+                        <option value="B">Section B</option>
+                      </select>
+                    </div>
+
+                    {/* Reset */}
+                    {(stuFilter.dept || stuFilter.year || stuFilter.sem || stuFilter.section) && (
+                      <button style={{ padding: '8px 14px', background: '#F4F6F9', border: '1px solid #D0D5DF', borderRadius: 4, fontSize: 12, cursor: 'pointer', color: '#4A4A4A', alignSelf: 'flex-end' }}
+                        onClick={() => setStudentFilter({ dept: '', year: '', sem: '', section: '' })}>
+                        ✕ Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Students Table */}
+                <div style={s.card}>
+                  <div style={s.sectionHeader}>
+                    <div style={{ ...s.sectionTitle, marginBottom: 0 }}>
+                      Student List
+                      <span style={{ fontSize: 12, color: '#8A8A8A', fontWeight: 400, marginLeft: 8 }}>
+                        ({filteredStudents.length} students)
+                      </span>
+                    </div>
+                    <button className="btn-exp" style={s.btnExport} onClick={exportStudentsCSV}>
+                      ⬇ Export CSV
+                    </button>
+                  </div>
+
+                  {filteredStudents.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px 24px', color: '#8A8A8A' }}>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>👥</div>
+                      <div style={{ fontSize: 13 }}>
+                        {stuFilter.dept ? 'No students found for selected filters' : 'Select a department to view students'}
+                      </div>
+                    </div>
+                  ) : (
+                    <table style={s.table}>
+                      <thead>
+                        <tr style={{ background: '#F4F6F9' }}>
+                          {['Sr.', 'Enrollment No.', 'Name', 'Department', 'Semester', 'Section', 'Status', 'Attendance'].map(h => (
+                            <th key={h} style={s.th}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredStudents.map((st, idx) => {
+                          const pct = stuAttendance[st.id];
+                          const status = getStuStatus(pct);
+                          const dept = departments.find(d => d.id === st.department_id);
+                          const secLetter = st.enrollment_no?.slice(-1) || '—';
+                          return (
+                            <tr key={st.id} className="cdgi-tr">
+                              <td style={{ ...s.td, color: '#8A8A8A', fontSize: 12 }}>{idx + 1}</td>
+                              <td style={{ ...s.td, fontFamily: 'monospace', fontSize: 12 }}>{st.enrollment_no}</td>
+                              <td style={{ ...s.td, fontWeight: 500 }}>{st.users?.name || '—'}</td>
+                              <td style={s.td}>
+                                <span style={{ ...s.badge, background: '#EEF2FF', color: '#2C3E6B', fontSize: 11 }}>
+                                  {dept?.code || '—'}
+                                </span>
+                              </td>
+                              <td style={s.td}>Sem {st.semester}</td>
+                              <td style={s.td}>{secLetter}</td>
+                              <td style={s.td}>
+                                <span style={{ ...s.badge, background: st.status === 'approved' ? '#DCFCE7' : st.status === 'rejected' ? '#FEF2F2' : '#FEF3C7', color: st.status === 'approved' ? '#16A34A' : st.status === 'rejected' ? '#DC2626' : '#D97706', fontSize: 11 }}>
+                                  {st.status || 'pending'}
+                                </span>
+                              </td>
+                              <td style={s.td}>
+                                {pct !== null && pct !== undefined ? (
+                                  <span style={{ ...s.badge, background: status.bg, color: status.color, fontSize: 11 }}>
+                                    {pct}%
+                                  </span>
+                                ) : <span style={{ color: '#C0C4CC', fontSize: 12 }}>—</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             )}
 
@@ -495,29 +684,119 @@ export default function AdminDashboard() {
             {activeTab === 'rooms' && (
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1A1A' }}>Rooms & Labs</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1A1A' }}>
+                    Rooms & Labs
+                    <span style={{ fontSize: 12, color: '#8A8A8A', fontWeight: 400, marginLeft: 8 }}>({rooms.length} rooms)</span>
+                  </div>
                   <button className="btn-pri" style={s.btnPrimary}
                     onClick={() => { setShowAddRoom(true); setRoomErrors({}); setRoomForm({ name: '', type: 'Classroom', latitude: '', longitude: '', radius_meters: '' }); }}>
                     + Add Room
                   </button>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
-                  {rooms.map((r, i) => (
-                    <div key={i} style={s.roomCard}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <div style={{ fontSize: 20, fontWeight: 700, color: '#2C3E6B' }}>{r.name}</div>
-                        <span style={{ ...s.badge, background: '#EEF2FF', color: '#2C3E6B' }}>
-                          {r.type || 'Classroom'}
-                        </span>
+
+                {rooms.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: '#8A8A8A' }}>
+                    <div style={{ fontSize: 32, marginBottom: 10 }}>🏫</div>
+                    <div style={{ fontSize: 13 }}>No rooms added yet</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
+                    {rooms.map((r) => (
+                      <div key={r.id} style={s.roomCard}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: '#2C3E6B' }}>{r.name}</div>
+                            <span style={{ ...s.badge, background: '#EEF2FF', color: '#2C3E6B', fontSize: 11, marginTop: 4, display: 'inline-block' }}>
+                              {r.type || 'Classroom'}
+                            </span>
+                          </div>
+                          <button className="btn-dng" style={{ ...s.btnDanger, fontSize: 11, padding: '4px 10px' }}
+                            onClick={() => handleRemoveRoom(r.id, r.name)}>
+                            Remove
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 11, color: '#8A8A8A', marginTop: 4 }}>
+                          📍 Lat: {r.latitude}, Long: {r.longitude}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#8A8A8A', marginTop: 4 }}>
+                          🎯 GPS Radius: <strong style={{ color: '#2C3E6B' }}>{r.radius_meters}m</strong>
+                        </div>
                       </div>
-                      <div style={{ fontSize: 11, color: '#8A8A8A', marginTop: 2 }}>📍 {r.latitude}, {r.longitude}</div>
-                      <div style={{ fontSize: 11, color: '#8A8A8A', marginTop: 2 }}>🎯 Radius: {r.radius_meters}m</div>
-                    </div>
-                  ))}
-                  {rooms.length === 0 && (
-                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 40, color: '#8A8A8A', fontSize: 13 }}>No rooms added yet</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ===== REQUESTS ===== */}
+            {activeTab === 'requests' && (
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1A1A', marginBottom: 16 }}>
+                  Pending Student Requests
+                  {pendingRequests.length > 0 && (
+                    <span style={{ marginLeft: 8, background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
+                      {pendingRequests.length}
+                    </span>
                   )}
                 </div>
+
+                {requestsLoading ? (
+                  <div style={{ textAlign: 'center', padding: 40, color: '#8A8A8A', fontSize: 13 }}>Loading...</div>
+                ) : pendingRequests.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: '#8A8A8A' }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>No pending requests</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>All student registrations are reviewed</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+                    {pendingRequests.map(req => (
+                      <div key={req.id} style={{ background: '#fff', border: '1px solid #D0D5DF', borderRadius: 8, overflow: 'hidden' }}>
+                        {/* Face Image */}
+                        <div style={{ background: '#2C3E6B', height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                          {req.face_image ? (
+                            <img
+                              src={`data:image/jpeg;base64,${req.face_image}`}
+                              alt='face'
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <div style={{ fontSize: 48, opacity: 0.4 }}>👤</div>
+                          )}
+                          <div style={{ position: 'absolute', top: 8, right: 8, background: '#FEF3C7', color: '#D97706', fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20 }}>
+                            PENDING
+                          </div>
+                        </div>
+
+                        {/* Info */}
+                        <div style={{ padding: 14 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#1A1A1A', marginBottom: 4 }}>
+                            {req.users?.name || '—'}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#8A8A8A', marginBottom: 2 }}>{req.users?.email || '—'}</div>
+                          <div style={{ fontSize: 12, color: '#8A8A8A', marginBottom: 2 }}>
+                            Enrollment: <span style={{ color: '#1A1A1A', fontFamily: 'monospace' }}>{req.enrollment_no}</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: '#8A8A8A', marginBottom: 12 }}>Semester: {req.semester}</div>
+
+                          {/* Action buttons */}
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              onClick={() => handleApprove(req.id, req.users?.name)}
+                              style={{ flex: 1, background: '#16A34A', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                              ✓ Approve
+                            </button>
+                            <button
+                              onClick={() => handleReject(req.id, req.users?.name)}
+                              style={{ flex: 1, background: '#fff', color: '#DC2626', border: '1.5px solid #DC2626', borderRadius: 6, padding: '9px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                              ✕ Reject
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -569,10 +848,23 @@ export default function AdminDashboard() {
                   value={facForm.department_id} onChange={e => setFacForm({ ...facForm, department_id: e.target.value })}>
                   <option value="">-- Select Department --</option>
                   {departments.map(d => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
+                    <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
                   ))}
                 </select>
                 {facErrors.department_id && <div style={s.errMsg}>{facErrors.department_id}</div>}
+              </div>
+
+              <div style={s.formRow}>
+                <label style={s.formLabel}>Designation</label>
+                <select className="cdgi-select" style={s.formInput}
+                  value={facForm.designation} onChange={e => setFacForm({ ...facForm, designation: e.target.value })}>
+                  <option value="Assistant Professor">Assistant Professor</option>
+                  <option value="Associate Professor">Associate Professor</option>
+                  <option value="Professor">Professor</option>
+                  <option value="Head of Department">Head of Department</option>
+                  <option value="Doctorate">Doctorate</option>
+                  <option value="Lecturer">Lecturer</option>
+                </select>
               </div>
 
               {genCreds && (
@@ -612,10 +904,11 @@ export default function AdminDashboard() {
               <div style={s.formRow}>
                 <label style={s.formLabel}>Room Number / Name</label>
                 <input className="cdgi-input" style={{ ...s.formInput, ...(roomErrors.name ? s.inputErr : {}) }}
-                  type="text" placeholder="eg. 204 or Lab-3"
+                  type="text" placeholder="eg. Room 204, Lab-3, Seminar Hall"
                   value={roomForm.name} onChange={e => setRoomForm({ ...roomForm, name: e.target.value })} />
                 {roomErrors.name && <div style={s.errMsg}>{roomErrors.name}</div>}
               </div>
+
               <div style={s.formRow}>
                 <label style={s.formLabel}>Room Type</label>
                 <select className="cdgi-select" style={s.formInput}
@@ -625,31 +918,58 @@ export default function AdminDashboard() {
                   <option value="Seminar Hall">Seminar Hall</option>
                 </select>
               </div>
+
+              <div style={{ background: '#EEF2FF', borderRadius: 6, padding: '10px 12px', fontSize: 12, color: '#2C3E6B', marginBottom: 14 }}>
+                💡 <strong>GPS Coordinates kaise nikale?</strong> Google Maps kholo, room ki building par right-click karo → "What's here?" → coordinates copy karo
+              </div>
+
               <div style={s.formGrid}>
                 <div style={s.formRow}>
-                  <label style={s.formLabel}>Latitude</label>
+                  <label style={s.formLabel}>Latitude <span style={{ color: '#8A8A8A', fontWeight: 400 }}>(numbers only)</span></label>
                   <input className="cdgi-input" style={{ ...s.formInput, ...(roomErrors.latitude ? s.inputErr : {}) }}
-                    type="number" placeholder="eg. 22.7196" step="0.0001"
-                    value={roomForm.latitude} onChange={e => setRoomForm({ ...roomForm, latitude: e.target.value })} />
+                    type="text" placeholder="eg. 22.7196"
+                    value={roomForm.latitude}
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (v === '' || v === '-' || /^-?[0-9]*\.?[0-9]*$/.test(v)) {
+                        setRoomForm({ ...roomForm, latitude: v });
+                      }
+                    }} />
                   {roomErrors.latitude && <div style={s.errMsg}>{roomErrors.latitude}</div>}
                 </div>
                 <div style={s.formRow}>
-                  <label style={s.formLabel}>Longitude</label>
+                  <label style={s.formLabel}>Longitude <span style={{ color: '#8A8A8A', fontWeight: 400 }}>(numbers only)</span></label>
                   <input className="cdgi-input" style={{ ...s.formInput, ...(roomErrors.longitude ? s.inputErr : {}) }}
-                    type="number" placeholder="eg. 75.8577" step="0.0001"
-                    value={roomForm.longitude} onChange={e => setRoomForm({ ...roomForm, longitude: e.target.value })} />
+                    type="text" placeholder="eg. 75.8577"
+                    value={roomForm.longitude}
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (v === '' || v === '-' || /^-?[0-9]*\.?[0-9]*$/.test(v)) {
+                        setRoomForm({ ...roomForm, longitude: v });
+                      }
+                    }} />
                   {roomErrors.longitude && <div style={s.errMsg}>{roomErrors.longitude}</div>}
                 </div>
               </div>
+
               <div style={s.formRow}>
-                <label style={s.formLabel}>Radius (meters) — GPS verification range</label>
+                <label style={s.formLabel}>
+                  GPS Radius (meters)
+                  <span style={{ color: '#8A8A8A', fontWeight: 400 }}> — students must be within this distance</span>
+                </label>
                 <input className="cdgi-input" style={{ ...s.formInput, ...(roomErrors.radius_meters ? s.inputErr : {}) }}
-                  type="number" placeholder="eg. 30" min="5" max="200"
-                  value={roomForm.radius_meters} onChange={e => setRoomForm({ ...roomForm, radius_meters: e.target.value })} />
-                {roomErrors.radius_meters && <div style={s.errMsg}>{roomErrors.radius_meters}</div>}
-              </div>
-              <div style={{ background: '#F4F6F9', borderRadius: 4, padding: '10px 12px', fontSize: 12, color: '#8A8A8A', marginTop: 4 }}>
-                📍 Students must be within this radius to mark attendance via GPS.
+                  type="text" placeholder="eg. 30 (recommended: 30–100 meters)"
+                  value={roomForm.radius_meters}
+                  onChange={e => {
+                    const v = e.target.value.replace(/[^0-9]/g, '');
+                    setRoomForm({ ...roomForm, radius_meters: v });
+                  }} />
+                {roomErrors.radius_meters
+                  ? <div style={s.errMsg}>{roomErrors.radius_meters}</div>
+                  : <div style={{ fontSize: 11, color: '#8A8A8A', marginTop: 4 }}>
+                      Recommended: 30–60m for classrooms, 50–100m for large halls
+                    </div>
+                }
               </div>
             </div>
             <div style={s.modalFooter}>

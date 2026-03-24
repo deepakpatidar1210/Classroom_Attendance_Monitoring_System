@@ -3,14 +3,13 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const authMiddleware = require('../middleware/auth');
 
-// Session banao (teacher)
+// create Session (teacher)
 router.post('/create', authMiddleware, async (req, res) => {
   const { subject_id, room_id, date, start_time, end_time } = req.body;
   const teacher_id = req.user.id;
   try {
-    // start_time timestamptz hai — date + time combine karke proper timestamp banao
-    const timeStr = start_time.length === 5 ? `${start_time}:00` : start_time;
-    const start_timestamp = new Date(`${date}T${timeStr}`).toISOString();
+    // start_time is timestamptz — date + time combine == proper timestampz
+    const start_timestamp = new Date(`${date}T${start_time}:00`).toISOString();
 
     const { data, error } = await supabase
       .from('sessions')
@@ -20,7 +19,7 @@ router.post('/create', authMiddleware, async (req, res) => {
         room_id,
         date,
         start_time: start_timestamp,
-        end_time, // text hai — as-is bhejo
+        end_time,
       })
       .select()
       .single();
@@ -32,7 +31,7 @@ router.post('/create', authMiddleware, async (req, res) => {
   }
 });
 
-// Teacher ke saari sessions
+// all sessions of teacher
 router.get('/teacher/:teacher_id', authMiddleware, async (req, res) => {
   const { teacher_id } = req.params;
   try {
@@ -68,6 +67,44 @@ router.get('/rooms', async (req, res) => {
       .select('*');
     if (error) return res.status(400).json({ error: error.message });
     res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Room add (for admin)
+router.post('/rooms/add', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { name, type, latitude, longitude, radius_meters } = req.body;
+  try {
+    const { data, error } = await supabase
+      .from('rooms')
+      .insert({
+        name: name.trim(),
+        type: type || 'Classroom',
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        radius_meters: parseInt(radius_meters),
+      })
+      .select()
+      .single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Room delete (for admin)
+router.delete('/rooms/:id', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  try {
+    const { error } = await supabase
+      .from('rooms')
+      .delete()
+      .eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

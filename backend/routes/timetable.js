@@ -3,7 +3,7 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const authMiddleware = require('../middleware/auth');
 
-// Period timings fetch karo
+// Period timings fetch
 router.get('/periods', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -17,7 +17,7 @@ router.get('/periods', async (req, res) => {
   }
 });
 
-// Ek section + day ka timetable fetch karo
+// one section + day timetable fetch
 router.get('/section', authMiddleware, async (req, res) => {
   const { section, day } = req.query;
   try {
@@ -34,14 +34,14 @@ router.get('/section', authMiddleware, async (req, res) => {
   }
 });
 
-// Teacher ka aaj ka schedule (teacher dashboard ke liye)
+// Teachers today schedule (teacher dashboard)
 router.get('/my-schedule', authMiddleware, async (req, res) => {
   const teacher_id = req.user.id;
   const jsDay = new Date().getDay(); // 0=Sun, 1=Mon ... 6=Sat
   const day = jsDay === 0 ? 6 : jsDay - 1; // Mon=0 ... Sat=5, Sun=6
 
   try {
-    // Step 1: Timetable entries fetch karo
+    // Step 1: Timetable entries fetch
     const { data: entries, error } = await supabase
       .from('timetable')
       .select('*, subjects(id, name, code), rooms(id, name)')
@@ -51,13 +51,13 @@ router.get('/my-schedule', authMiddleware, async (req, res) => {
 
     if (error) return res.status(400).json({ error: error.message });
 
-    // Step 2: Period timings alag fetch karo
+    // Step 2: Period timings fetch
     const { data: periods } = await supabase
       .from('period_timings')
       .select('*')
       .order('period_no');
 
-    // Step 3: Merge — har entry mein period_timings inject karo
+    // Step 3: Merge — inject period timings in every entry
     const merged = (entries || []).map(entry => ({
       ...entry,
       period_timings: (periods || []).find(p => p.period_no === entry.period_no) || null,
@@ -69,7 +69,7 @@ router.get('/my-schedule', authMiddleware, async (req, res) => {
   }
 });
 
-// Timetable entry save karo (upsert) — admin only
+// Timetable entry save (upsert) — admin only
 router.post('/save', authMiddleware, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   const { section, day_of_week, period_no, subject_id, room_id, teacher_id, notes } = req.body;
@@ -92,7 +92,7 @@ router.post('/save', authMiddleware, async (req, res) => {
   }
 });
 
-// Timetable entry delete karo
+// Timetable entry delete
 router.delete('/delete', authMiddleware, async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   const { section, day_of_week, period_no } = req.body;
@@ -110,7 +110,7 @@ router.delete('/delete', authMiddleware, async (req, res) => {
   }
 });
 
-// Poore section ka timetable (saare days) fetch karo
+// whole section timetable (all days) fetch
 router.get('/full', authMiddleware, async (req, res) => {
   const { section } = req.query;
   try {

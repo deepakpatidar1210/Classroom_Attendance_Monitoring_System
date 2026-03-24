@@ -3,12 +3,12 @@ const router = express.Router();
 const supabase = require('../config/supabase');
 const authMiddleware = require('../middleware/auth');
 
-// Attendance mark karo (sirf student)
+// Attendance mark (only student)
 router.post('/mark', authMiddleware, async (req, res) => {
   const { session_id, qr_verified, gps_verified, face_verified } = req.body;
   const student_id = req.user.id;
 
-  // Role check — sirf student attendance mark kar sakta hai
+  // Role check — only student can mark attendance
   if (req.user.role !== 'student') {
     return res.status(403).json({ error: 'Only students can mark attendance' });
   }
@@ -45,7 +45,7 @@ router.patch('/override', authMiddleware, async (req, res) => {
   const { session_id, student_id, status } = req.body;
   const teacher_id = req.user.id;
 
-  // Role check — sirf teacher override kar sakta hai
+  // Role check — only teacher czn override
   if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Only teachers can override attendance' });
   }
@@ -71,7 +71,7 @@ router.patch('/override', authMiddleware, async (req, res) => {
   }
 });
 
-// Student ki attendance fetch karo
+// Student attendance fetch
 router.get('/student/:student_id', authMiddleware, async (req, res) => {
   const { student_id } = req.params;
 
@@ -90,7 +90,7 @@ router.get('/student/:student_id', authMiddleware, async (req, res) => {
   }
 });
 
-// Session ki attendance fetch karo
+// Session attendance fetch
 router.get('/session/:session_id', authMiddleware, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -105,7 +105,7 @@ router.get('/session/:session_id', authMiddleware, async (req, res) => {
   }
 });
 
-// Average attendance (admin dashboard ke liye)
+// Average attendance (for admin dashbaord)
 router.get('/avg', authMiddleware, async (req, res) => {
   try {
     const { data: total, error: totalErr } = await supabase

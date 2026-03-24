@@ -7,9 +7,9 @@ const supabase = require('../config/supabase');
 
 const FACE_SERVER_URL = process.env.FACE_SERVER_URL || 'http://localhost:5001';
 
-// REGISTER
+// REGISTER — fro student status='pending', teacher/admin direct register
 router.post('/register', async (req, res) => {
-  const { name, email, password, role, enrollment_no, semester, department_id } = req.body;
+  const { name, email, password, role, enrollment_no, semester, department_id, designation } = req.body;
 
   try {
     const password_hash = await bcrypt.hash(password, 10);
@@ -25,7 +25,13 @@ router.post('/register', async (req, res) => {
     if (role === 'student') {
       const { error: stuError } = await supabase
         .from('students')
-        .insert({ id: user.id, enrollment_no, semester, department_id });
+        .insert({
+          id: user.id,
+          enrollment_no,
+          semester,
+          department_id,
+          status: 'pending', // pending approval
+        });
 
       if (stuError) return res.status(400).json({ error: stuError.message });
     }
@@ -34,7 +40,12 @@ router.post('/register', async (req, res) => {
       const { employee_id } = req.body;
       const { error: teachError } = await supabase
         .from('teachers')
-        .insert({ id: user.id, employee_id, department_id });
+        .insert({
+          id: user.id,
+          employee_id,
+          department_id,
+          designation: designation || 'Assistant Professor',
+        });
 
       if (teachError) return res.status(400).json({ error: teachError.message });
     }
@@ -52,7 +63,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// LOGIN
+// LOGIN — status check for student
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
@@ -68,6 +79,28 @@ router.post('/login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(400).json({ error: 'Wrong password' });
 
+    // approval status check for students
+    if (user.role === 'student') {
+      const { data: student } = await supabase
+        .from('students')
+        .select('status')
+        .eq('id', user.id)
+        .single();
+
+      if (student?.status === 'pending') {
+        return res.status(403).json({
+          error: 'Your registration is pending admin approval. Please wait.',
+          status: 'pending',
+        });
+      }
+      if (student?.status === 'rejected') {
+        return res.status(403).json({
+          error: 'Your registration has been rejected. Please contact admin.',
+          status: 'rejected',
+        });
+      }
+    }
+
     const token = jwt.sign(
       { id: user.id, role: user.role, name: user.name },
       process.env.JWT_SECRET,
@@ -81,13 +114,16 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// SAVE FACE
+// SAVE FACE — face descriptors + one face image preview save
 router.post('/save-face', async (req, res) => {
-  const { userId, faceImages } = req.body;
+  const { userId, faceImages, facePreview } = req.body;
   try {
     const { error } = await supabase
       .from('students')
-      .update({ face_descriptors: faceImages })
+      .update({
+        face_descriptors: faceImages,
+        face_image: facePreview || null, // for admin preview
+      })
       .eq('id', userId);
 
     if (error) return res.status(400).json({ error: error.message });
@@ -125,20 +161,13 @@ router.post('/verify-face', async (req, res) => {
       .single();
 
     if (error || !data) {
-      return res.status(400).json({
-        verified: false,
-        error: 'Student not found'
-      });
+      return res.status(400).json({ verified: false, error: 'Student not found' });
     }
 
     if (!data.face_descriptors || data.face_descriptors.length === 0) {
-      return res.status(400).json({
-        verified: false,
-        error: 'Face not registered — please register again'
-      });
+      return res.status(400).json({ verified: false, error: 'Face not registered' });
     }
 
-    // Face server URL ab .env se aata hai
     const faceRes = await axios.post(`${FACE_SERVER_URL}/verify-face`, {
       liveImage: capturedImage,
       storedDescriptors: data.face_descriptors,
@@ -154,8 +183,6 @@ router.post('/verify-face', async (req, res) => {
     res.status(500).json({ verified: false, error: err.message });
   }
 });
-
-module.exports = router;
 
 // CHANGE PASSWORD
 router.post('/change-password', require('../middleware/auth'), async (req, res) => {
@@ -186,3 +213,5 @@ router.post('/change-password', require('../middleware/auth'), async (req, res) 
     res.status(500).json({ error: err.message });
   }
 });
+
+module.exports = router;

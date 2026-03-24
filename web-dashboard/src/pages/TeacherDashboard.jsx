@@ -77,7 +77,7 @@ export default function TeacherDashboard() {
     catch { console.error('QR generate failed'); }
   };
 
-  // Timetable slot se session create karo — ek click
+  // session create from time table slot — one click
   const createFromSlot = async (slot) => {
     const today = new Date().toISOString().split('T')[0];
     try {
@@ -98,7 +98,7 @@ export default function TeacherDashboard() {
     }
   };
 
-  // Manual form se session create karo
+  // Manual session create
   const createManual = async () => {
     if (!form.subject_id || !form.room_id) { toast.error('Please select subject and room'); return; }
     try {

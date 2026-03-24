@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def decode_image(image_base64):
     # Base64 padding fix
-    # Data URL prefix hata do agar ho (e.g. "data:image/jpeg;base64,...")
+  
     if ',' in image_base64:
         image_base64 = image_base64.split(',', 1)[1]
 
@@ -33,7 +33,7 @@ def decode_image(image_base64):
     except Exception:
         pass
 
-    # RGB convert (RGBA ya grayscale bhi ho sakti hai)
+    # RGB convert 
     if image.mode != 'RGB':
         image = image.convert('RGB')
 
@@ -198,7 +198,7 @@ def verify_face():
         # ----- TOLERANCE TUNING -----
         # 0.4 = very strict | 0.6 = standard | 0.65 = lenient | 0.75 = very lenient
         # Mobile front camera ke liye 0.75 best hai
-        TOLERANCE = 0.75
+        TOLERANCE = 0.3
 
         results = face_recognition.compare_faces(
             stored_encodings,

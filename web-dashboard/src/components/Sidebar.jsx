@@ -61,7 +61,7 @@ export default function Sidebar() {
             </div>
           </div>
 
-          {/* Settings button — sirf teacher ke liye */}
+          {/* Settings button — fro teachers */}
           {user?.role === 'teacher' && (
             <button className="settings-btn"
               onClick={() => navigate('/settings')}
