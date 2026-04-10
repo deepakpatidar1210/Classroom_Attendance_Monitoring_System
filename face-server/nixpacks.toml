@@ -1,5 +1,5 @@
-[phases.setup]
-nixPkgs = ["cmake", "gcc", "blas", "lapack"]
+ [phases.setup]
+nixPkgs = ["cmake", "gcc", "blas", "lapack", "xorg.libX11", "xorg.libXext", "xorg.libXrender"]
 
 [start]
 cmd = "gunicorn -w 4 -b 0.0.0.0:$PORT app:app --timeout 120 --preload"
