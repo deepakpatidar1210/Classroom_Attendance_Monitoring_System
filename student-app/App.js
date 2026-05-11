@@ -18,7 +18,7 @@ function RootNavigator() {
   const { user, loading } = useAuth();
 
   if (loading) return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#2C3E6B' }}>
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1A3644' }}>
       <ActivityIndicator size="large" color="#F0C040" />
     </View>
   );

@@ -198,7 +198,7 @@ def verify_face():
         # ----- TOLERANCE TUNING -----
         # 0.4 = very strict | 0.6 = standard | 0.65 = lenient | 0.75 = very lenient
         # Mobile front camera ke liye 0.75 best hai
-        TOLERANCE = 0.3
+        TOLERANCE = 0.4
 
         results = face_recognition.compare_faces(
             stored_encodings,

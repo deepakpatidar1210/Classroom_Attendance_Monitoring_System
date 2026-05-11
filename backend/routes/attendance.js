@@ -71,6 +71,36 @@ router.patch('/override', authMiddleware, async (req, res) => {
   }
 });
 
+// Teacher batch manual override
+router.patch('/batch-override', authMiddleware, async (req, res) => {
+  const { session_id, attendance_data } = req.body;
+  const teacher_id = req.user.id;
+
+  if (req.user.role !== 'teacher' && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only teachers can override attendance' });
+  }
+
+  try {
+    const promises = attendance_data.map(record => 
+      supabase
+        .from('attendance')
+        .update({
+          status: record.status,
+          manually_overridden: true,
+          overridden_by: teacher_id,
+        })
+        .eq('session_id', session_id)
+        .eq('student_id', record.student_id)
+    );
+
+    await Promise.all(promises);
+    res.json({ success: true, message: 'Attendance updated successfully' });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Student attendance fetch
 // FIX: Ab absent rows bhi hongi table mein, isliye sab records aayenge (present + absent)
 router.get('/student/:student_id', authMiddleware, async (req, res) => {

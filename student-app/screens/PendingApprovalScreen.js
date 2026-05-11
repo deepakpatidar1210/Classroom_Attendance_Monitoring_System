@@ -1,7 +1,7 @@
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar, SafeAreaView } from 'react-native';
 
 const COLORS = {
-  navy: '#2C3E6B', navyDark: '#1e2c50', gold: '#F0C040',
+  navy: '#1A3644', navyDark: '#132832', gold: '#F59E0B',
   bg: '#EEF1F6', white: '#fff',
 };
 

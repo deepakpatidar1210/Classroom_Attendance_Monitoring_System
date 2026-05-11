@@ -1,4 +1,4 @@
-# AMS — CDGI (Attendance Monitoring System)
+# AttendSoft — CDGI (Attendance Monitoring System)
 
 A comprehensive, automated attendance monitoring system utilizing mobile facial recognition and QR code validation. This system handles role-based dashboards, student registration approvals, timetable management, and automated visual attendance tracking.
 
@@ -222,7 +222,7 @@ Create a `.env` file referencing your Supabase data and Face server IP:
 PORT=5000
 SUPABASE_URL=https://<your-project>.supabase.co
 SUPABASE_KEY=<your-anon-public-key>
-JWT_SECRET=cdgi_attendx_2025_secure_key
+JWT_SECRET=cdgi_attendsoft_2025_secure_key
 FACE_SERVER_URL=http://<YOUR_IPV4_ADDRESS>:5001
 DASHBOARD_URL=http://localhost:5173
 ```

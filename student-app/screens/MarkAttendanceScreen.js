@@ -8,7 +8,7 @@ import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
 const COLORS = {
-  navy: '#2C3E6B', navyDark: '#1e2c50', gold: '#F0C040',
+  navy: '#1A3644', navyDark: '#132832', gold: '#F59E0B',
   bg: '#EEF1F6', white: '#fff', surface: '#F4F6F9',
   border: '#DDE1EA', text: '#1A1A1A', text2: '#4A4A4A', text3: '#9AA0AD',
   green: '#16A34A', greenBg: '#DCFCE7',

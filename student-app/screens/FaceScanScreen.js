@@ -10,7 +10,7 @@ import axios from 'axios';
 import { FACE_SERVER_URL } from '../config';
 
 const COLORS = {
-  navy: '#2C3E6B', navyDark: '#1e2c50', gold: '#F0C040',
+  navy: '#1A3644', navyDark: '#132832', gold: '#F59E0B',
   bg: '#EEF1F6', white: '#fff', text3: '#9AA0AD',
   green: '#16A34A', greenBg: '#DCFCE7', red: '#DC2626',
 };

@@ -38,7 +38,7 @@ export default function LoginScreen({ navigation }) {
           <View style={s.logoCircle}>
             <Text style={s.logoText}>A</Text>
           </View>
-          <Text style={s.brandName}>AMS — CDGI</Text>
+          <Text style={s.brandName}>AttendSoft — CDGI</Text>
           <Text style={s.brandSub}>Attendance Monitoring System</Text>
           <Text style={s.collegeName}>Chameli Devi Group of Institutions</Text>
         </View>
@@ -96,7 +96,7 @@ export default function LoginScreen({ navigation }) {
 }
 
 const COLORS = {
-  navy: '#2C3E6B', navyDark: '#1e2c50', gold: '#F0C040',
+  navy: '#1A3644', navyDark: '#132832', gold: '#F59E0B',
   bg: '#EEF1F6', white: '#fff', surface: '#F4F6F9',
   border: '#DDE1EA', text: '#1A1A1A', text2: '#4A4A4A', text3: '#9AA0AD',
 };

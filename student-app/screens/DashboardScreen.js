@@ -9,15 +9,15 @@ import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 
 const COLORS = {
-  navy: '#2C3E6B', navyDark: '#1e2c50', navyLight: '#3d5080',
-  gold: '#F0C040', bg: '#EEF1F6', white: '#fff', surface: '#F4F6F9',
+  navy: '#1A3644', navyDark: '#132832', navyLight: '#2C7B8E',
+  gold: '#F59E0B', bg: '#EEF1F6', white: '#fff', surface: '#F4F6F9',
   border: '#DDE1EA', text: '#1A1A1A', text2: '#4A4A4A', text3: '#9AA0AD',
   green: '#16A34A', greenBg: '#DCFCE7', greenLight: '#86EFAC',
   red: '#DC2626', redBg: '#FEF2F2', redLight: '#FCA5A5',
   yellow: '#D97706', yellowBg: '#FEF3C7',
 };
 
-const SUBJECT_COLORS = ['#2C3E6B','#7C3AED','#0891B2','#D97706','#DC2626'];
+const SUBJECT_COLORS = ['#1A3644','#7C3AED','#0891B2','#D97706','#DC2626'];
 
 const formatDate = (date) => {
   const d = new Date(date);

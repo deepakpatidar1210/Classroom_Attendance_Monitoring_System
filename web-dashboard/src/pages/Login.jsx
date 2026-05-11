@@ -1,37 +1,32 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import collegeImage from '../assets/college.jpg';
+import api from '../api/axios';
 
 export default function Login() {
   const { login } = useAuth();
-  const [role, setRole] = useState('teacher');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [showHints, setShowHints] = useState(false);
-  const [logoError, setLogoError] = useState(false);
-  const [passChecks, setPassChecks] = useState({
-    len: false, upper: false, lower: false, num: false, special: false,
-  });
+  const [showForgotPass, setShowForgotPass] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
-  const checkPassword = (val) => {
-    setPassChecks({
-      len: val.length >= 8,
-      upper: /[A-Z]/.test(val),
-      lower: /[a-z]/.test(val),
-      num: /[0-9]/.test(val),
-      special: /[!@#$%^&*()\-_=+[\]{};:'",.<>?/\\|`~]/.test(val),
-    });
-  };
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const emailError = emailTouched && (!email ? 'Email is required' : !isEmailValid ? 'Please enter a valid email' : '');
 
-  const handlePasswordChange = (val) => {
-    setPassword(val);
-    checkPassword(val);
-  };
+  const passLengthError = password.length < 8 ? 'Password must be at least 8 characters' : password.length > 16 ? 'Password must be no more than 16 characters' : '';
+  const passwordError = passwordTouched && passLengthError ? passLengthError : '';
 
   const handleLogin = async () => {
-    if (!email || !password) return toast.error('Please fill all fields');
+    setEmailTouched(true);
+    setPasswordTouched(true);
+    if (!email || !password || emailError || passLengthError) {
+      return toast.error('Please fix the errors before logging in');
+    }
     setLoading(true);
     try {
       await login(email, password);
@@ -44,196 +39,221 @@ export default function Login() {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') handleLogin();
+    if (e.key === 'Enter') {
+      if (showForgotPass) handleForgotPass();
+      else handleLogin();
+    }
   };
 
-  const HintRow = ({ ok, text }) => (
-    <div style={{ ...s.hint, color: ok ? '#16A34A' : '#DC2626' }}>• {text}</div>
-  );
+  const handleForgotPass = async () => {
+    setEmailTouched(true);
+    if (!email || emailError) {
+      return toast.error('Please enter a valid email address');
+    }
+    setLoading(true);
+    try {
+      await api.post('/notifications/request-reset', { email });
+      setResetSent(true);
+      toast.success('Password reset request sent to Admin!');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to send request');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
-        .cdgi-body * { box-sizing: border-box; margin: 0; padding: 0; }
-        .cdgi-login-btn:hover { background: #1e2c50 !important; }
-        .cdgi-input:focus { border-color: #2C3E6B !important; outline: none; }
-        .cdgi-link:hover { text-decoration: underline; }
-        .cdgi-radio { accent-color: #2C3E6B; width: 14px; height: 14px; cursor: pointer; }
-      `}</style>
-
-      <div className="cdgi-body" style={s.body}>
-        <div style={s.card}>
-
-          {/* Topbar */}
-          <div style={s.topbar}>
-
-            <div style={s.topbarTitle}>AttendX</div>
-          </div>
-
-          {/* Card body */}
-          <div style={s.cardBody}>
-
-            {/* Logo */}
-            <div style={s.logoWrap}>
-              {!logoError ? (
-                <img
-                  src="/cdgi_logo.jpeg"
-                  alt="CDGI Logo"
-                  style={s.logo}
-                  onError={() => setLogoError(true)}
-                />
-              ) : (
-                <div style={s.logoFallback}>CDGI</div>
-              )}
+    <div style={{ display: 'flex', minHeight: '100vh', width: '100vw', overflow: 'hidden' }}>
+      {/* Left side - Cover Image */}
+      <div style={{
+        flex: 1,
+        position: 'relative',
+        backgroundImage: `url(${collegeImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        display: 'none', // Will be block on larger screens, handled via media query normally but we'll force it here
+      }} className="desktop-only-bg">
+        {/* Dark Teal Gradient Overlay */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(135deg, rgba(26, 54, 68, 0.85) 0%, rgba(44, 123, 142, 0.7) 100%)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          padding: '64px',
+          color: 'white'
+        }}>
+          <div className="fade-in" style={{ maxWidth: '600px' }}>
+            <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'white', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '32px', marginBottom: '24px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+              A
             </div>
-
-            {/* Role */}
-            <div style={s.roleRow}>
-              <label style={s.roleLabel}>
-                <input className="cdgi-radio" type="radio" name="role" value="admin"
-                  checked={role === 'admin'} onChange={() => setRole('admin')} />
-                Admin
-              </label>
-              <label style={s.roleLabel}>
-                <input className="cdgi-radio" type="radio" name="role" value="teacher"
-                  checked={role === 'teacher'} onChange={() => setRole('teacher')} />
-                Faculty
-              </label>
-            </div>
-
-            {/* Email */}
-            <div style={s.inputGroup}>
-              <input
-                className="cdgi-input"
-                style={s.input}
-                type="email"
-                placeholder={role === 'admin' ? 'Admin Email' : 'Faculty Email (eg. faculty@cdgi.ac.in)'}
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                onKeyDown={handleKeyDown}
-              />
-            </div>
-
-            {/* Password */}
-            <div style={s.inputGroup}>
-              <div style={s.passWrap}>
-                <input
-                  className="cdgi-input"
-                  style={{ ...s.input, paddingRight: 40 }}
-                  type={showPass ? 'text' : 'password'}
-                  placeholder="Password"
-                  value={password}
-                  onChange={e => handlePasswordChange(e.target.value)}
-                  onFocus={() => setShowHints(true)}
-                  onKeyDown={handleKeyDown}
-                />
-                <button style={s.eyeBtn} type="button" onClick={() => setShowPass(!showPass)}>
-                  {showPass ? '🙈' : '👁'}
-                </button>
-              </div>
-
-              {showHints && (
-                <div style={s.hints}>
-                  <HintRow ok={passChecks.len} text="Minimum 8 characters" />
-                  <HintRow ok={passChecks.upper} text="At least 1 uppercase letter (A-Z)" />
-                  <HintRow ok={passChecks.lower} text="At least 1 lowercase letter (a-z)" />
-                  <HintRow ok={passChecks.num} text="At least 1 number (0-9)" />
-                  <HintRow ok={passChecks.special} text="At least 1 special character (!@#$ etc.)" />
-                </div>
-              )}
-            </div>
-
-            {/* Forgot password */}
-            <div style={s.linksRow}>
-              <button className="cdgi-link" style={s.linkBtn} type="button">
-                Forgot Password?
-              </button>
-            </div>
-
-            {/* Login btn */}
-            <button
-              className="cdgi-login-btn"
-              style={{ ...s.loginBtn, opacity: loading ? 0.7 : 1 }}
-              onClick={handleLogin}
-              disabled={loading}
-            >
-              {loading ? 'Logging in...' : 'Login »'}
-            </button>
-
+            <h1 style={{ fontSize: '48px', fontWeight: '700', marginBottom: '16px', lineHeight: 1.1 }}>
+              AttendSoft
+            </h1>
+            <h2 style={{ fontSize: '24px', fontWeight: '400', opacity: 0.9, marginBottom: '24px' }}>
+              Chameli Devi Group of Institutions
+            </h2>
+            <p style={{ fontSize: '16px', opacity: 0.8, lineHeight: 1.6, maxWidth: '80%' }}>
+              Welcome to the modern classroom attendance monitoring system. Fast, reliable, and secure face-recognition powered attendance.
+            </p>
           </div>
         </div>
       </div>
-    </>
+
+      {/* Right side - Login Form */}
+      <div style={{
+        flex: '0 0 100%',
+        maxWidth: '500px',
+        background: 'var(--surface)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        padding: '48px',
+        boxShadow: '-10px 0 30px rgba(0,0,0,0.05)',
+        zIndex: 10
+      }} className="login-form-container">
+        
+        <div className="fade-in" style={{ width: '100%', maxWidth: '400px', margin: '0 auto' }}>
+          
+          <div style={{ marginBottom: '40px' }}>
+            <h2 style={{ fontSize: '28px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '8px' }}>
+              Welcome Back
+            </h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
+              Please sign in to your account
+            </p>
+          </div>
+
+          {!showForgotPass ? (
+            <>
+              {/* Email */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: 'var(--text-main)' }}>Email Address</label>
+                <input
+                  className={`form-input ${emailError ? 'error' : ''}`}
+                  style={{ padding: '14px 16px' }}
+                  type="email"
+                  placeholder="Enter your email address"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  onBlur={() => setEmailTouched(true)}
+                  onKeyDown={handleKeyDown}
+                />
+                {emailError && <span className="error-text">{emailError}</span>}
+              </div>
+
+              {/* Password */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: 'var(--text-main)' }}>Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className={`form-input ${passwordError ? 'error' : ''}`}
+                    style={{ padding: '14px 16px', paddingRight: '40px' }}
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    onBlur={() => setPasswordTouched(true)}
+                    onKeyDown={handleKeyDown}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '16px', cursor: 'pointer' }}
+                  >
+                    {showPass ? '🙈' : '👁'}
+                  </button>
+                </div>
+                {passwordError && <span className="error-text">{passwordError}</span>}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '32px' }}>
+                <button type="button" onClick={() => setShowForgotPass(true)} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                  Forgot Password?
+                </button>
+              </div>
+
+              {/* Login btn */}
+              <button
+                className="btn-primary"
+                style={{ width: '100%', padding: '14px', fontSize: '16px', fontWeight: '600', borderRadius: '10px' }}
+                onClick={handleLogin}
+                disabled={loading}
+              >
+                {loading ? 'Authenticating...' : 'Sign In'}
+              </button>
+              
+              <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '13px', color: 'var(--text-muted)' }}>
+                Need help accessing your account? Contact IT Support.
+              </p>
+            </>
+          ) : (
+            <>
+              {resetSent ? (
+                <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#DCFCE7', color: 'var(--success)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', margin: '0 auto 24px' }}>✓</div>
+                  <h3 style={{ fontSize: '20px', fontWeight: '600', color: 'var(--text-main)', marginBottom: '12px' }}>Request Sent</h3>
+                  <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '32px', lineHeight: 1.6 }}>
+                    Your password reset request has been sent to the administrator. You will be notified once it is resolved.
+                  </p>
+                  <button className="btn-primary" style={{ width: '100%', padding: '14px', borderRadius: '10px' }} onClick={() => { setShowForgotPass(false); setResetSent(false); }}>
+                    Back to Login
+                  </button>
+                </div>
+              ) : (
+                <div className="fade-in">
+                  <div style={{ marginBottom: '32px' }}>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: 'var(--text-main)' }}>Email Address</label>
+                    <input
+                      className={`form-input ${emailError ? 'error' : ''}`}
+                      style={{ padding: '14px 16px' }}
+                      type="email"
+                      placeholder="Enter your registered email"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      onBlur={() => setEmailTouched(true)}
+                      onKeyDown={handleKeyDown}
+                    />
+                    {emailError && <span className="error-text">{emailError}</span>}
+                  </div>
+
+                  <button
+                    className="btn-primary"
+                    style={{ width: '100%', padding: '14px', fontSize: '16px', fontWeight: '600', borderRadius: '10px', marginBottom: '16px' }}
+                    onClick={handleForgotPass}
+                    disabled={loading}
+                  >
+                    {loading ? 'Sending Request...' : 'Send Reset Request'}
+                  </button>
+
+                  <button type="button" onClick={() => setShowForgotPass(false)} style={{ width: '100%', background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '14px', fontWeight: '500', cursor: 'pointer', padding: '10px' }}>
+                    Back to Login
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+        </div>
+      </div>
+
+      <style>{`
+        @media (min-width: 900px) {
+          .desktop-only-bg {
+            display: block !important;
+          }
+          .login-form-container {
+            flex: 0 0 400px !important;
+            max-width: none !important;
+          }
+        }
+        @media (min-width: 1200px) {
+          .login-form-container {
+            flex: 0 0 500px !important;
+          }
+        }
+      `}</style>
+    </div>
   );
 }
-
-const s = {
-  body: {
-    fontFamily: "'Poppins', sans-serif",
-    background: '#D6DCE4',
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  card: {
-    background: '#fff',
-    width: 420,
-    borderRadius: 4,
-    overflow: 'hidden',
-    boxShadow: '0 2px 16px rgba(0,0,0,.12)',
-  },
-  topbar: {
-    background: '#2C3E6B',
-    padding: '14px 20px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  topbarIcon: {
-    width: 30, height: 30,
-    borderRadius: '50%',
-    background: '#F0C040',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: 16, fontWeight: 700, color: '#2C3E6B', flexShrink: 0,
-  },
-  topbarTitle: { color: '#fff', fontSize: 14, fontWeight: 500, letterSpacing: 0.2 },
-  cardBody: { padding: '28px 36px 36px', textAlign: 'center' },
-  logoWrap: { marginBottom: 18 },
-  logo: { width: 115, height: 115, objectFit: 'contain', borderRadius: '50%' },
-  logoFallback: {
-    width: 115, height: 115, borderRadius: '50%',
-    background: '#2C3E6B', margin: '0 auto',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    color: '#fff', fontSize: 24, fontWeight: 700,
-  },
-  roleRow: { display: 'flex', justifyContent: 'center', gap: 28, marginBottom: 18 },
-  roleLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 500, color: '#333', cursor: 'pointer' },
-  inputGroup: { marginBottom: 13, textAlign: 'left' },
-  input: {
-    width: '100%', padding: '11px 14px',
-    border: '1px solid #C8CDD6', borderRadius: 4,
-    fontFamily: "'Poppins', sans-serif",
-    fontSize: 13, color: '#333', transition: 'border-color .2s',
-  },
-  passWrap: { position: 'relative' },
-  eyeBtn: {
-    position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)',
-    background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, color: '#AAB0BB',
-  },
-  hints: { marginTop: 6, textAlign: 'left' },
-  hint: { fontSize: 11, lineHeight: 1.7 },
-  linksRow: { display: 'flex', justifyContent: 'flex-start', marginBottom: 16 },
-  linkBtn: {
-    fontSize: 12, color: '#2563EB', background: 'none', border: 'none',
-    cursor: 'pointer', fontFamily: "'Poppins', sans-serif", padding: 0,
-  },
-  loginBtn: {
-    background: '#2C3E6B', color: '#fff', border: 'none', borderRadius: 4,
-    padding: '11px 36px', fontFamily: "'Poppins', sans-serif",
-    fontSize: 14, fontWeight: 500, cursor: 'pointer',
-    transition: 'background .2s', letterSpacing: 0.3,
-  },
-};

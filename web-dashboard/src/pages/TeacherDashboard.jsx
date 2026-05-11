@@ -1,14 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
+import NotificationBell from '../components/NotificationBell';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 
-const LAYOUT = { marginLeft: 220, fontFamily: "'Poppins',sans-serif", background: '#D6DCE4', minHeight: '100vh' };
-
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
 export default function TeacherDashboard() {
+  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const { user } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
@@ -16,6 +14,11 @@ export default function TeacherDashboard() {
   const [countdown, setCountdown] = useState(5);
   const [showModal, setShowModal] = useState(false);
   const [activeAttendance, setActiveAttendance] = useState([]);
+
+  // Manual Rollcall state
+  const [showManualAttendance, setShowManualAttendance] = useState(false);
+  const [manualSessionId, setManualSessionId] = useState(null);
+  const [manualAttendanceData, setManualAttendanceData] = useState([]);
 
   // Timetable based state
   const [todaySchedule, setTodaySchedule] = useState([]);
@@ -74,6 +77,31 @@ export default function TeacherDashboard() {
   const fetchSessions = async () => {
     try { const res = await api.get(`/sessions/teacher/${user.id}`); setSessions(res.data); }
     catch { toast.error('Could not fetch sessions'); }
+  };
+
+  const openManualAttendance = async (session_id) => {
+    setManualSessionId(session_id);
+    setShowManualAttendance(true);
+    try {
+      const res = await api.get(`/attendance/session/${session_id}`);
+      setManualAttendanceData(res.data);
+    } catch { toast.error('Failed to load students'); }
+  };
+
+  const submitManualAttendance = async () => {
+    try {
+      const updates = manualAttendanceData.map(att => ({
+        student_id: att.student_id,
+        status: att.status
+      }));
+      await api.patch('/attendance/batch-override', {
+        session_id: manualSessionId,
+        attendance_data: updates
+      });
+      toast.success('Attendance updated successfully');
+      setShowManualAttendance(false);
+      if (manualSessionId === activeSession) fetchActiveAttendance();
+    } catch { toast.error('Failed to update attendance'); }
   };
 
   const fetchTodaySchedule = async () => {
@@ -186,112 +214,118 @@ export default function TeacherDashboard() {
   const todayName = DAYS[jsDay === 0 ? 6 : jsDay - 1];
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
-        .cdgi-tr:hover { background: #F4F6F9; }
-        .cdgi-btn-new:hover { background: #1e2c50 !important; }
-        .cdgi-btn-end:hover { background: #FEF2F2 !important; }
-        .cdgi-cancel:hover { background: #F4F6F9 !important; }
-        .cdgi-primary:hover { background: #1e2c50 !important; }
-        .slot-card:hover { border-color: #2C3E6B !important; background: #F4F6F9 !important; }
-        .start-slot-btn:hover { background: #1e2c50 !important; }
-        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
-        @keyframes barFill { from{width:100%} to{width:0%} }
-      `}</style>
+    <div className="fade-in" style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg-color)' }}>
       <Sidebar />
-      <div style={LAYOUT}>
+      <div className="page-container" style={{ flex: 1, marginLeft: '240px', display: 'flex', flexDirection: 'column' }}>
         {/* Topbar */}
-        <div style={s.topbar}>
-          <div style={s.pageTitle}>Dashboard</div>
-          <div style={s.topbarDate}>{today}</div>
-        </div>
-
-        <div style={s.content}>
-          {/* Stats */}
-          <div style={s.statsRow}>
-            <div style={s.statCard}>
-              <div style={s.statLabel}>Today's Sessions</div>
-              <div style={s.statVal}>{todaySessions.length}</div>
-              <div style={s.statSub}>{todaySessions.filter(s => !s.is_active).length} completed</div>
-            </div>
-            <div style={s.statCard}>
-              <div style={s.statLabel}>Total Sessions</div>
-              <div style={s.statVal}>{sessions.length}</div>
-              <div style={s.statSub}>All time</div>
-            </div>
-            <div style={s.statCard}>
-              <div style={s.statLabel}>Active Session</div>
-              <div style={{ ...s.statVal, color: activeSession ? '#16A34A' : '#8A8A8A' }}>
-                {activeSession ? 'LIVE' : 'None'}
+        {/* Top Banner Area */}
+        <div style={{ background: 'var(--topbar-gradient)', padding: '32px 32px 48px', color: 'white' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+            <div>
+              <h1 style={{ fontSize: '24px', fontWeight: '600', marginBottom: '4px' }}>
+                Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 17 ? 'Afternoon' : 'Evening'}, {user?.name?.split(' ')[0] || 'Faculty'}!
+              </h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', opacity: 0.9 }}>
+                <span>📅 {today}</span>
               </div>
-              <div style={s.statSub}>{activeSession ? 'QR is running' : 'Start a new session'}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <NotificationBell userRole="teacher" />
+              <div style={{ background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)', padding: '6px 16px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>👨‍🏫</span> Faculty Dashboard
+              </div>
             </div>
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+            <div style={{ background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.2)', padding: '20px', borderRadius: '12px' }}>
+              <div style={{ fontSize: '13px', opacity: 0.8 }}>Today's Sessions</div>
+              <div style={{ fontSize: '28px', fontWeight: '700', margin: '4px 0' }}>{todaySessions.length}</div>
+              <div style={{ fontSize: '11px', opacity: 0.7 }}>{todaySessions.filter(s => !s.is_active).length} completed</div>
+            </div>
+            <div style={{ background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.2)', padding: '20px', borderRadius: '12px' }}>
+              <div style={{ fontSize: '13px', opacity: 0.8 }}>Total Sessions</div>
+              <div style={{ fontSize: '28px', fontWeight: '700', margin: '4px 0' }}>{sessions.length}</div>
+              <div style={{ fontSize: '11px', opacity: 0.7 }}>All time</div>
+            </div>
+            <div style={{ background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.2)', padding: '20px', borderRadius: '12px' }}>
+              <div style={{ fontSize: '13px', opacity: 0.8 }}>Active Session</div>
+              <div style={{ fontSize: '28px', fontWeight: '700', margin: '4px 0', color: activeSession ? '#DCFCE7' : 'white' }}>
+                {activeSession ? 'LIVE' : 'None'}
+              </div>
+              <div style={{ fontSize: '11px', opacity: 0.7 }}>{activeSession ? 'QR is running' : 'Start a new session'}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding: '0 32px 32px', flex: 1, marginTop: '-24px' }}>
+
           {/* TODAY'S SCHEDULE — main section */}
-          <div style={s.card}>
-            <div style={s.sectionHeader}>
-              <div style={s.sectionTitle}>📅 Today's Schedule — {todayName}</div>
-              <button className="cdgi-btn-new" style={{ ...s.newSessionBtn, marginBottom: 0 }}
-                onClick={() => { setManualMode(true); setShowModal(true); }}>
+          <div className="card" style={{ marginBottom: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-main)' }}>📅 Today's Schedule — {todayName}</div>
+              <button className="btn-primary" onClick={() => { setManualMode(true); setShowModal(true); }}>
                 + Manual Session
               </button>
             </div>
 
             {scheduleLoading ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: '#8A8A8A', fontSize: 13 }}>
+              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
                 Loading your schedule...
               </div>
             ) : todaySchedule.length === 0 ? (
-              <div style={s.emptySchedule}>
-                <div style={{ fontSize: 32, marginBottom: 10 }}>📭</div>
-                <div style={{ fontSize: 13, color: '#4A4A4A', fontWeight: 500 }}>No classes scheduled today</div>
-                <div style={{ fontSize: 12, color: '#8A8A8A', marginTop: 4 }}>
+              <div style={{ textAlign: 'center', padding: '32px 24px', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '32px', marginBottom: '10px' }}>📭</div>
+                <div style={{ fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}>No classes scheduled today</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
                   Use "Manual Session" to start a session manually
                 </div>
               </div>
             ) : (
-              <div style={s.scheduleGrid}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
                 {todaySchedule.map((slot, i) => {
                   const isCurrent = isCurrentPeriod(slot);
                   const started = alreadyStarted(slot);
                   const pt = slot.period_timings;
                   return (
-                    <div key={i} className="slot-card" style={{
-                      ...s.slotCard,
-                      borderColor: isCurrent ? '#2C3E6B' : '#D0D5DF',
-                      background: isCurrent ? '#EEF2FF' : '#fff',
+                    <div key={i} style={{
+                      border: '1px solid',
+                      borderColor: isCurrent ? 'var(--primary)' : 'var(--border)',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      background: isCurrent ? '#EEF2FF' : 'var(--surface)',
+                      position: 'relative',
+                      transition: 'border-color 0.2s, background 0.2s'
                     }}>
                       {isCurrent && (
-                        <div style={s.currentBadge}>
-                          <div style={s.liveDot} /> NOW
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#DCFCE7', color: 'var(--success)', fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '20px', marginBottom: '8px' }}>
+                          <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--success)', animation: 'blink 1.2s infinite' }} /> NOW
                         </div>
                       )}
-                      <div style={s.slotPeriod}>{pt?.label || `Period ${slot.period_no}`}</div>
-                      <div style={s.slotTime}>
+                      <div style={{ fontSize: '10px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>{pt?.label || `Period ${slot.period_no}`}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--primary)', marginBottom: '8px' }}>
                         {pt ? `${pt.start_time.slice(0, 5)} – ${pt.end_time.slice(0, 5)}` : '—'}
                       </div>
-                      <div style={s.slotSubject}>
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)', marginBottom: '2px' }}>
                         {slot.subjects?.name || slot.notes || 'Free'}
                       </div>
                       {slot.subjects?.code && (
-                        <div style={s.slotCode}>{slot.subjects.code}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>{slot.subjects.code}</div>
                       )}
-                      <div style={s.slotRoom}>🏫 {slot.rooms?.name || '—'}</div>
-                      <div style={s.slotSection}>👥 {slot.section}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-main)', marginBottom: '2px' }}>🏫 {slot.rooms?.name || '—'}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-main)', marginBottom: '12px' }}>👥 {slot.section}</div>
 
                       {slot.subjects && !started && (
-                        <button className="start-slot-btn" style={s.startSlotBtn}
+                        <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}
                           onClick={() => createFromSlot(slot)}>
                           ▶ Start Session
                         </button>
                       )}
                       {started && (
-                        <div style={s.startedBadge}>✓ Session Started</div>
+                        <div style={{ width: '100%', textAlign: 'center', background: '#DCFCE7', color: 'var(--success)', borderRadius: '6px', padding: '8px 0', fontSize: '12px', fontWeight: '600' }}>✓ Session Started</div>
                       )}
                       {!slot.subjects && (
-                        <div style={{ fontSize: 11, color: '#8A8A8A', marginTop: 8, textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center' }}>
                           {slot.notes || 'No class'}
                         </div>
                       )}
@@ -304,58 +338,59 @@ export default function TeacherDashboard() {
 
           {/* Active session QR card */}
           {activeSession && qrImage && (
-            <div style={s.activeCard}>
-              <div style={s.asHeader}>
-                <div style={s.asTitle}>
+            <div style={{ background: 'var(--surface)', border: '2px solid var(--primary)', borderRadius: '8px', padding: '24px', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <div style={{ fontSize: '18px', fontWeight: '600', color: 'var(--primary)' }}>
                   {activeObj?.subjects?.name || 'Session'} — Active
                 </div>
-                <div style={s.livePill}>
-                  <div style={s.liveDot} />
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#DCFCE7', color: 'var(--success)', fontSize: '12px', fontWeight: '600', padding: '4px 12px', borderRadius: '20px' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--success)', animation: 'blink 1.2s infinite' }} />
                   LIVE
                 </div>
               </div>
-              <div style={s.sessionInfoGrid}>
-                <div style={s.siItem}><div style={s.siLabel}>Subject</div><div style={s.siVal}>{activeObj?.subjects?.name || '—'}</div></div>
-                <div style={s.siItem}><div style={s.siLabel}>Room</div><div style={s.siVal}>{activeObj?.rooms?.name || '—'}</div></div>
-                <div style={s.siItem}><div style={s.siLabel}>Date</div><div style={s.siVal}>{activeObj?.date}</div></div>
-                <div style={s.siItem}><div style={s.siLabel}>Section</div><div style={s.siVal}>{activeObj?.section || '—'}</div></div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '16px', marginBottom: '24px' }}>
+                <div style={{ background: 'var(--bg-color)', borderRadius: '6px', padding: '12px 16px' }}><div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Subject</div><div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--text-main)' }}>{activeObj?.subjects?.name || '—'}</div></div>
+                <div style={{ background: 'var(--bg-color)', borderRadius: '6px', padding: '12px 16px' }}><div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Room</div><div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--text-main)' }}>{activeObj?.rooms?.name || '—'}</div></div>
+                <div style={{ background: 'var(--bg-color)', borderRadius: '6px', padding: '12px 16px' }}><div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Date</div><div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--text-main)' }}>{activeObj?.date}</div></div>
+                <div style={{ background: 'var(--bg-color)', borderRadius: '6px', padding: '12px 16px' }}><div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Section</div><div style={{ fontSize: '14px', fontWeight: '500', color: 'var(--text-main)' }}>{activeObj?.section || '—'}</div></div>
               </div>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-                <div style={s.qrSection}>
-                  <div style={s.qrBox}>
-                    <img src={qrImage} alt="QR Code" style={{ width: 180, height: 180 }} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', background: 'var(--bg-color)', padding: '24px', borderRadius: '8px' }}>
+                  <div style={{ border: '2px solid var(--primary)', borderRadius: '12px', padding: '16px', background: 'white' }}>
+                    <img src={qrImage} alt="QR Code" style={{ width: '200px', height: '200px' }} />
                   </div>
-                  <div style={s.qrTimer}>Refreshing in {countdown}s</div>
-                  <div style={s.qrRefreshBar}>
-                    <div key={countdown} style={s.qrBarFill} />
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Refreshing in {countdown}s</div>
+                  <div style={{ width: '200px', height: '4px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div key={countdown} style={{ height: '100%', background: 'var(--primary)', borderRadius: '2px', transition: 'width 1s linear', width: `${(countdown / 5) * 100}%` }} />
                   </div>
                 </div>
 
-                <div style={s.attendanceLiveSection}>
-                  <div style={s.liveCountRow}>
-                    <div style={s.liveCountLabel}>Students Present</div>
-                    <div style={s.liveCountVal}>{activeAttendance.filter(a => a.status === 'present').length}</div>
+                <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--surface)' }}>
+                  <div style={{ background: 'var(--bg-color)', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)' }}>Students Present</div>
+                    <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--primary)' }}>{activeAttendance.filter(a => a.status === 'present').length}</div>
                   </div>
                   
-                  <div style={s.liveListContainer}>
+                  <div style={{ height: '260px', overflowY: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
-                        <tr style={{ background: '#F4F6F9', position: 'sticky', top: 0 }}>
-                          <th style={{ ...s.th, padding: '6px 10px', fontSize: 10 }}>Enrollment</th>
-                          <th style={{ ...s.th, padding: '6px 10px', fontSize: 10 }}>Name</th>
+                        <tr style={{ background: 'var(--bg-color)', position: 'sticky', top: 0 }}>
+                          <th style={{ textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', padding: '8px 16px', borderBottom: '1px solid var(--border)' }}>Enrollment</th>
+                          <th style={{ textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', padding: '8px 16px', borderBottom: '1px solid var(--border)' }}>Name</th>
                         </tr>
                       </thead>
                       <tbody>
                         {activeAttendance.filter(a => a.status === 'present').map((att, i) => (
-                          <tr key={i} style={{ borderBottom: '1px solid #D0D5DF' }}>
-                            <td style={{ ...s.td, padding: '6px 10px', fontSize: 12 }}>{att.students?.enrollment_no}</td>
-                            <td style={{ ...s.td, padding: '6px 10px', fontSize: 12 }}>{att.students?.users?.name}</td>
+                          <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '10px 16px', fontSize: '13px', color: 'var(--text-main)', fontFamily: 'monospace' }}>{att.students?.enrollment_no}</td>
+                            <td style={{ padding: '10px 16px', fontSize: '13px', color: 'var(--text-main)' }}>{att.students?.users?.name}</td>
                           </tr>
                         ))}
                         {activeAttendance.filter(a => a.status === 'present').length === 0 && (
                           <tr>
-                            <td colSpan={2} style={{ textAlign: 'center', padding: 20, fontSize: 11, color: '#8A8A8A' }}>
+                            <td colSpan={2} style={{ textAlign: 'center', padding: '32px 20px', fontSize: '13px', color: 'var(--text-muted)' }}>
                               Waiting for students to scan...
                             </td>
                           </tr>
@@ -366,8 +401,11 @@ export default function TeacherDashboard() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 20 }}>
-                <button className="cdgi-btn-end" style={s.endBtn} onClick={() => endSession(activeSession)}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginTop: '24px', gap: '12px' }}>
+                <button className="btn-primary" style={{ background: 'var(--surface)', color: 'var(--primary)', border: '1.5px solid var(--primary)' }} onClick={() => openManualAttendance(activeSession)}>
+                  📝 Manual Rollcall
+                </button>
+                <button className="btn-primary" style={{ background: 'var(--surface)', color: 'var(--error)', border: '1.5px solid var(--error)' }} onClick={() => endSession(activeSession)}>
                   ⏹ End Session
                 </button>
               </div>
@@ -375,48 +413,43 @@ export default function TeacherDashboard() {
           )}
 
           {/* Sessions history table */}
-          <div style={s.card}>
-            <div style={s.sectionTitle}>Session History</div>
-            <table style={s.table}>
+          <div className="card">
+            <div style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-main)', marginBottom: '16px' }}>Session History</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: '#F4F6F9' }}>
-                  <th style={s.th}>Subject</th>
-                  <th style={s.th}>Room</th>
-                  <th style={s.th}>Section</th>
-                  <th style={s.th}>Date</th>
-                  <th style={s.th}>Time</th>
-                  <th style={s.th}>Status</th>
-                  <th style={s.th}>Action</th>
+                <tr style={{ background: 'var(--bg-color)' }}>
+                  {['Subject', 'Room', 'Section', 'Date', 'Time', 'Status', 'Action'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {sessions.map(s2 => (
-                  <tr key={s2.id} className="cdgi-tr">
-                    <td style={s.td}>{s2.subjects?.name || '—'}</td>
-                    <td style={s.td}>{s2.rooms?.name || '—'}</td>
-                    <td style={s.td}>{s2.section || '—'}</td>
-                    <td style={s.td}>{s2.date}</td>
-                    <td style={s.td}>
+                  <tr key={s2.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}>{s2.subjects?.name || '—'}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-main)' }}>{s2.rooms?.name || '—'}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-main)' }}>{s2.section || '—'}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-main)' }}>{s2.date}</td>
+                    <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-main)' }}>
                       {s2.start_time ? new Date(s2.start_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
                       {s2.end_time ? ` – ${s2.end_time}` : ''}
                     </td>
-                    <td style={s.td}>
-                      <span style={{ ...s.badge, ...(s2.is_active ? s.badgeGreen : s.badgeGray) }}>
+                    <td style={{ padding: '12px 16px', fontSize: '13px' }}>
+                      <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', background: s2.is_active ? '#DCFCE7' : 'var(--bg-color)', color: s2.is_active ? 'var(--success)' : 'var(--text-muted)' }}>
                         {s2.is_active ? 'Active' : 'Ended'}
                       </span>
                     </td>
-                    <td style={s.td}>
-                      {s2.is_active ? (
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button onClick={() => setActiveSession(s2.id)} style={s.smallBtn}>Show QR</button>
-                          <button onClick={() => endSession(s2.id)} style={{ ...s.smallBtn, color: '#DC2626', borderColor: '#DC2626' }}>End</button>
-                        </div>
-                      ) : <span style={{ fontSize: 12, color: '#8A8A8A' }}>Completed</span>}
+                    <td style={{ padding: '12px 16px', fontSize: '13px' }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {s2.is_active && <button className="btn-primary" onClick={() => setActiveSession(s2.id)} style={{ padding: '6px 12px', background: 'var(--bg-color)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '12px', color: 'var(--text-main)', boxShadow: 'none' }}>Show QR</button>}
+                        {s2.is_active && <button className="btn-primary" onClick={() => endSession(s2.id)} style={{ padding: '6px 12px', background: 'var(--error)', border: '1px solid var(--error)', borderRadius: '6px', fontSize: '12px', color: 'white', boxShadow: 'none' }}>End</button>}
+                        <button className="btn-primary" onClick={() => openManualAttendance(s2.id)} style={{ padding: '6px 12px', background: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: '6px', fontSize: '12px', color: 'white', boxShadow: 'none' }}>Rollcall</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {sessions.length === 0 && (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: '#8A8A8A', fontSize: 13 }}>No sessions yet</td></tr>
+                  <tr><td colSpan={7} style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)', fontSize: '13px' }}>No sessions yet</td></tr>
                 )}
               </tbody>
             </table>
@@ -426,66 +459,44 @@ export default function TeacherDashboard() {
 
       {/* Manual Session Modal */}
       {showModal && manualMode && (
-        <div style={s.modalOverlay}>
-          <div style={s.modal}>
-            <div style={s.modalHeader}>
-              <div style={s.modalTitle}>Manual Session</div>
-              <button style={s.modalClose} onClick={() => { setShowModal(false); setManualMode(false); }}>✕</button>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+          <div className="card fade-in" style={{ width: '500px', padding: 0, overflow: 'hidden' }}>
+            <div style={{ background: 'var(--primary)', color: 'white', padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '16px', fontWeight: '600' }}>Manual Session</div>
+              <button style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: '20px', cursor: 'pointer' }} onClick={() => { setShowModal(false); setManualMode(false); }}>✕</button>
             </div>
-            <div style={s.modalBody}>
-              <div style={{ background: '#FEF9C3', border: '1px solid #FDE047', borderRadius: 4, padding: '8px 12px', fontSize: 12, color: '#854D0E', marginBottom: 16 }}>
-                ⚠ Schedule not found in Timetable? Create a manual session here.
+            <div style={{ padding: '24px' }}>
+              <div style={{ background: '#FEF9C3', border: '1px solid #FDE047', borderRadius: '6px', padding: '12px 16px', fontSize: '13px', color: '#854D0E', marginBottom: '20px', display: 'flex', gap: '8px' }}>
+                <span>⚠</span>
+                <span>Schedule not found in Timetable? Create a manual session here.</span>
               </div>
               
-              <div style={s.formRow}>
-                <label style={s.formLabel}>Date</label>
-                <input style={s.formInput} type="date" value={form.date}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', marginBottom: '6px' }}>Date</label>
+                <input className="form-input" type="date" value={form.date}
                   onChange={e => setForm({ ...form, date: e.target.value })} />
               </div>
               
-              <div style={s.formGrid}>
-                <div style={s.formRow}>
-                  <label style={s.formLabel}>Start Time</label>
-                  <select style={s.formInput} value={form.start_time}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', marginBottom: '6px' }}>Start Time</label>
+                  <select className="form-input" value={form.start_time}
                     onChange={e => setForm({ ...form, start_time: e.target.value })}>
                     {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
-                <div style={s.formRow}>
-                  <label style={s.formLabel}>End Time</label>
-                  <select style={s.formInput} value={form.end_time}
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', marginBottom: '6px' }}>End Time</label>
+                  <select className="form-input" value={form.end_time}
                     onChange={e => setForm({ ...form, end_time: e.target.value })}>
                     {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
               </div>
-              
-              <div style={s.formRow}>
-                <label style={s.formLabel}>Subject</label>
-                <select style={s.formInput} value={form.subject_id}
-                  onChange={e => setForm({ ...form, subject_id: e.target.value })}>
-                  <option value="">-- Select Subject --</option>
-                  {subjects.map(sub => (
-                    <option key={sub.id} value={sub.id}>{sub.name} ({sub.code})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={s.formRow}>
-                <label style={s.formLabel}>Room</label>
-                <select style={s.formInput} value={form.room_id}
-                  onChange={e => setForm({ ...form, room_id: e.target.value })}>
-                  <option value="">-- Select Room --</option>
-                  {rooms.map(r => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={s.formGrid}>
-                <div style={s.formRow}>
-                  <label style={s.formLabel}>Department</label>
-                  <select style={s.formInput} value={filter.dept}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', marginBottom: '6px' }}>Department</label>
+                  <select className="form-input" value={filter.dept}
                     onChange={e => setFilter({ dept: e.target.value, year: '', sem: '', sectionCode: '' })}>
                     <option value="">-- Select --</option>
                     {departments.map(d => (
@@ -493,9 +504,9 @@ export default function TeacherDashboard() {
                     ))}
                   </select>
                 </div>
-                <div style={s.formRow}>
-                  <label style={s.formLabel}>Year</label>
-                  <select style={s.formInput} value={filter.year}
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', marginBottom: '6px' }}>Year</label>
+                  <select className="form-input" value={filter.year}
                     onChange={e => setFilter(prev => ({ ...prev, year: e.target.value, sem: '', sectionCode: '' }))}
                     disabled={!filter.dept}>
                     <option value="">-- Select --</option>
@@ -507,10 +518,10 @@ export default function TeacherDashboard() {
                 </div>
               </div>
 
-              <div style={s.formGrid}>
-                <div style={s.formRow}>
-                  <label style={s.formLabel}>Semester</label>
-                  <select style={s.formInput} value={filter.sem}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', marginBottom: '6px' }}>Semester</label>
+                  <select className="form-input" value={filter.sem}
                     onChange={e => setFilter(prev => ({ ...prev, sem: e.target.value, sectionCode: '' }))}
                     disabled={!filter.year}>
                     <option value="">-- Select --</option>
@@ -520,9 +531,9 @@ export default function TeacherDashboard() {
                     {filter.year === '4' && <><option value="7">Sem 7</option><option value="8">Sem 8</option></>}
                   </select>
                 </div>
-                <div style={s.formRow}>
-                  <label style={s.formLabel}>Section</label>
-                  <select style={s.formInput} value={filter.sectionCode}
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', marginBottom: '6px' }}>Section</label>
+                  <select className="form-input" value={filter.sectionCode}
                     onChange={e => setFilter(prev => ({ ...prev, sectionCode: e.target.value }))}
                     disabled={!filter.sem}>
                     <option value="">-- Select --</option>
@@ -531,95 +542,90 @@ export default function TeacherDashboard() {
                   </select>
                 </div>
               </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', marginBottom: '6px' }}>Subject</label>
+                <select className="form-input" value={form.subject_id}
+                  onChange={e => setForm({ ...form, subject_id: e.target.value })}>
+                  <option value="">-- Select Subject --</option>
+                  {subjects.map(sub => (
+                    <option key={sub.id} value={sub.id}>{sub.name} ({sub.code})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', color: 'var(--text-muted)', marginBottom: '6px' }}>Room</label>
+                <select className="form-input" value={form.room_id}
+                  onChange={e => setForm({ ...form, room_id: e.target.value })}>
+                  <option value="">-- Select Room --</option>
+                  {rooms.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div style={s.modalFooter}>
-              <button className="cdgi-cancel" style={s.btnCancel}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '12px', background: 'var(--bg-color)' }}>
+              <button className="btn-primary" style={{ background: 'var(--surface)', color: 'var(--text-main)', border: '1px solid var(--border)' }}
                 onClick={() => { setShowModal(false); setManualMode(false); }}>Cancel</button>
-              <button className="cdgi-primary" style={s.btnPrimary} onClick={createManual}>
+              <button className="btn-primary" onClick={createManual}>
                 Generate QR & Start
               </button>
             </div>
           </div>
         </div>
       )}
-    </>
+
+      {/* Manual Rollcall Modal */}
+      {showManualAttendance && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+          <div className="card fade-in" style={{ width: '600px', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+            <div style={{ background: 'var(--primary)', color: 'white', padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '16px', fontWeight: '600' }}>Manual Rollcall</div>
+              <button style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: '20px', cursor: 'pointer' }} onClick={() => setShowManualAttendance(false)}>✕</button>
+            </div>
+            <div style={{ padding: '16px 24px', flex: 1, overflowY: 'auto', background: 'var(--bg-color)' }}>
+              {manualAttendanceData.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px', padding: '40px' }}>No students found for this session.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {manualAttendanceData.map(att => (
+                    <div key={att.student_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-main)' }}>{att.students?.users?.name || 'Unknown Student'}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{att.students?.enrollment_no || '—'}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: att.status === 'present' ? 'var(--success)' : 'var(--text-muted)' }}>
+                          <input type="radio" name={`status-${att.student_id}`} value="present" checked={att.status === 'present'} 
+                            onChange={() => setManualAttendanceData(prev => prev.map(p => p.student_id === att.student_id ? { ...p, status: 'present' } : p))} 
+                            style={{ accentColor: 'var(--success)' }} />
+                          Present
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '14px', color: att.status === 'absent' ? 'var(--error)' : 'var(--text-muted)' }}>
+                          <input type="radio" name={`status-${att.student_id}`} value="absent" checked={att.status === 'absent'} 
+                            onChange={() => setManualAttendanceData(prev => prev.map(p => p.student_id === att.student_id ? { ...p, status: 'absent' } : p))} 
+                            style={{ accentColor: 'var(--error)' }} />
+                          Absent
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', background: 'var(--surface)', alignItems: 'center' }}>
+               <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                 Present: <span style={{ fontWeight: '600', color: 'var(--success)' }}>{manualAttendanceData.filter(a => a.status === 'present').length}</span>
+               </div>
+               <div style={{ display: 'flex', gap: '12px' }}>
+                 <button className="btn-primary" style={{ background: 'var(--surface)', color: 'var(--text-main)', border: '1px solid var(--border)' }} onClick={() => setShowManualAttendance(false)}>Cancel</button>
+                 <button className="btn-primary" onClick={submitManualAttendance} disabled={manualAttendanceData.length === 0}>Submit Attendance</button>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
-
-const s = {
-  topbar: { background: '#fff', borderBottom: '1px solid #D0D5DF', padding: '14px 28px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50 },
-  pageTitle: { fontSize: 16, fontWeight: 600, color: '#1A1A1A' },
-  topbarDate: { fontSize: 12, color: '#8A8A8A' },
-  content: { padding: '24px 28px' },
-  statsRow: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 24 },
-  statCard: { background: '#fff', border: '1px solid #D0D5DF', borderRadius: 6, padding: '18px 20px' },
-  statLabel: { fontSize: 11, color: '#8A8A8A', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 },
-  statVal: { fontSize: 28, fontWeight: 600, color: '#1A1A1A' },
-  statSub: { fontSize: 11, color: '#8A8A8A', marginTop: 4 },
-  newSessionBtn: { display: 'inline-flex', alignItems: 'center', gap: 8, background: '#2C3E6B', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 18px', fontFamily: "'Poppins',sans-serif", fontSize: 13, fontWeight: 500, cursor: 'pointer', marginBottom: 24 },
-
-  // Schedule grid
-  card: { background: '#fff', border: '1px solid #D0D5DF', borderRadius: 6, padding: 20, marginBottom: 20 },
-  sectionTitle: { fontSize: 14, fontWeight: 600, color: '#1A1A1A' },
-  sectionHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  emptySchedule: { textAlign: 'center', padding: '32px 24px', color: '#8A8A8A' },
-  scheduleGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 },
-  slotCard: { border: '1.5px solid #D0D5DF', borderRadius: 8, padding: 14, position: 'relative', transition: 'border-color .2s, background .2s', cursor: 'default' },
-  currentBadge: { display: 'inline-flex', alignItems: 'center', gap: 5, background: '#DCFCE7', color: '#16A34A', fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 20, marginBottom: 8 },
-  liveDot: { width: 6, height: 6, borderRadius: '50%', background: '#16A34A', animation: 'blink 1.2s infinite' },
-  slotPeriod: { fontSize: 10, fontWeight: 600, color: '#8A8A8A', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 2 },
-  slotTime: { fontSize: 12, fontWeight: 600, color: '#2C3E6B', marginBottom: 8 },
-  slotSubject: { fontSize: 13, fontWeight: 600, color: '#1A1A1A', marginBottom: 2 },
-  slotCode: { fontSize: 11, color: '#8A8A8A', marginBottom: 6 },
-  slotRoom: { fontSize: 11, color: '#4A4A4A', marginBottom: 2 },
-  slotSection: { fontSize: 11, color: '#4A4A4A', marginBottom: 10 },
-  startSlotBtn: { width: '100%', background: '#2C3E6B', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 0', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'Poppins',sans-serif" },
-  startedBadge: { width: '100%', textAlign: 'center', background: '#DCFCE7', color: '#16A34A', borderRadius: 6, padding: '8px 0', fontSize: 12, fontWeight: 600 },
-
-  // Active session
-  activeCard: { background: '#fff', border: '2px solid #2C3E6B', borderRadius: 6, padding: 20, marginBottom: 24 },
-  asHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  asTitle: { fontSize: 14, fontWeight: 600, color: '#2C3E6B' },
-  livePill: { display: 'inline-flex', alignItems: 'center', gap: 6, background: '#DCFCE7', color: '#16A34A', fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 20 },
-  sessionInfoGrid: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 },
-  siItem: { background: '#F4F6F9', borderRadius: 4, padding: '10px 12px' },
-  siLabel: { fontSize: 10, color: '#8A8A8A', marginBottom: 3 },
-  siVal: { fontSize: 13, fontWeight: 500, color: '#1A1A1A' },
-  qrSection: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, marginBottom: 20 },
-  qrBox: { border: '2px solid #2C3E6B', borderRadius: 8, padding: 16, background: '#fff', display: 'inline-block' },
-  qrTimer: { fontSize: 12, color: '#8A8A8A' },
-  qrRefreshBar: { width: 180, height: 4, background: '#D0D5DF', borderRadius: 2, overflow: 'hidden' },
-  qrBarFill: { height: '100%', background: '#2C3E6B', borderRadius: 2, animation: 'barFill 5s linear forwards' },
-  endBtn: { background: '#fff', border: '1.5px solid #DC2626', color: '#DC2626', borderRadius: 6, padding: '9px 20px', fontFamily: "'Poppins',sans-serif", fontSize: 13, fontWeight: 500, cursor: 'pointer' },
-
-  // Live Tracking
-  attendanceLiveSection: { flex: 1, border: '1px solid #D0D5DF', borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
-  liveCountRow: { background: '#F4F6F9', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #D0D5DF' },
-  liveCountLabel: { fontSize: 12, fontWeight: 600, color: '#4A4A4A' },
-  liveCountVal: { fontSize: 18, fontWeight: 700, color: '#2C3E6B' },
-  liveListContainer: { height: 200, overflowY: 'auto' },
-
-  // Table
-  table: { width: '100%', borderCollapse: 'collapse' },
-  th: { textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#8A8A8A', textTransform: 'uppercase', letterSpacing: '.05em', padding: '9px 12px', borderBottom: '1px solid #D0D5DF' },
-  td: { padding: '11px 12px', fontSize: 13, borderBottom: '1px solid #D0D5DF', color: '#1A1A1A' },
-  badge: { display: 'inline-block', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500 },
-  badgeGreen: { background: '#DCFCE7', color: '#16A34A' },
-  badgeGray: { background: '#F1F5F9', color: '#64748B' },
-  smallBtn: { padding: '5px 12px', background: '#F4F6F9', border: '1px solid #D0D5DF', borderRadius: 4, fontSize: 12, cursor: 'pointer', fontFamily: "'Poppins',sans-serif" },
-
-  // Modal
-  modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 },
-  modal: { background: '#fff', borderRadius: 6, width: 460, maxWidth: '95vw', boxShadow: '0 8px 32px rgba(0,0,0,.18)' },
-  modalHeader: { background: '#2C3E6B', color: '#fff', padding: '16px 20px', borderRadius: '6px 6px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  modalTitle: { fontSize: 14, fontWeight: 600 },
-  modalClose: { background: 'none', border: 'none', color: 'rgba(255,255,255,.7)', fontSize: 20, cursor: 'pointer', lineHeight: 1 },
-  modalBody: { padding: 20 },
-  formRow: { marginBottom: 14 },
-  formLabel: { display: 'block', fontSize: 12, fontWeight: 500, color: '#4A4A4A', marginBottom: 5 },
-  formInput: { width: '100%', padding: '9px 12px', border: '1px solid #D0D5DF', borderRadius: 4, fontFamily: "'Poppins',sans-serif", fontSize: 13, color: '#1A1A1A', outline: 'none', background: '#fff' },
-  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 },
-  modalFooter: { padding: '14px 20px', borderTop: '1px solid #D0D5DF', display: 'flex', justifyContent: 'flex-end', gap: 10 },
-  btnCancel: { background: '#fff', border: '1px solid #D0D5DF', color: '#4A4A4A', borderRadius: 4, padding: '9px 18px', fontFamily: "'Poppins',sans-serif", fontSize: 13, cursor: 'pointer' },
-  btnPrimary: { background: '#2C3E6B', color: '#fff', border: 'none', borderRadius: 4, padding: '9px 20px', fontFamily: "'Poppins',sans-serif", fontSize: 13, fontWeight: 500, cursor: 'pointer' },
-};
